@@ -122,7 +122,7 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 /* Page 4 : ce que révèlent les données, la carte en fond et un grand cadre à onglets */
 /* Page 4 : les tendances défilent sous le titre, qui reste en haut jusqu'à la dernière ; tout est centré */
 #obs { position: relative; }
-.obs-flow { width: min(760px, calc(100vw - 2 * var(--gap) - 40px)); margin: 0 auto; padding-bottom: 60vh; pointer-events: auto; text-align: center; }
+.obs-flow { width: min(760px, calc(100vw - 2 * var(--gap) - 40px)); margin: 0 auto; padding-bottom: 30vh; pointer-events: auto; text-align: center; }
 /* Titre collé en haut : un dégradé sombre dessous, pour que les tendances passent derrière */
 .obs-head { position: sticky; top: 0; z-index: 2; padding: 5vh 0 34px;   /* transparent */
   transition: transform .6s ease, opacity .6s ease; }
@@ -158,6 +158,13 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 .desel { flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--ink-2); background: none; color: var(--ink-2);
   display: flex; align-items: center; justify-content: center; cursor: pointer; transition: color .2s, border-color .2s; }
 .desel:hover { color: var(--accent); border-color: var(--accent); }
+/* Clignotement unique des invitations de la page 3 (trois éclats orange) */
+.cta-hint { border-radius: 2px; padding: 0 2px; }
+.cta-hint.blink { animation: hint-blink .8s ease-in-out 3; }
+@keyframes hint-blink { 50% { background: var(--accent); color: var(--bg); } }
+.desel.blink { animation: desel-blink .8s ease-in-out 3; }
+@keyframes desel-blink { 50% { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 5px rgba(240, 163, 59, .45); } }
+@media (prefers-reduced-motion: reduce) { .cta-hint.blink, .desel.blink { animation: none; } }
 .desel svg { width: 12px; height: 12px; }
 /* Page 1 : la carte ne se clique pas (on ne fait que la survoler et défiler) */
 #bg-front.no-click .dept-hit, #bg-front.no-click .river-hit { cursor: default; }
@@ -995,6 +1002,23 @@ function riverRows(c, named = false) {
     return row;
   });
 }
+// Invitations de la page 3 : elles clignotent une seule fois chacune, au moment où elles servent
+// (un département à choisir, puis un cours d'eau, puis la croix pour revenir au Grand Est)
+const blinked = new Set();
+function blinkOnce(key, el, delay = 0) {
+  if (blinked.has(key) || !el || bg.page !== "p2") return;
+  blinked.add(key);
+  setTimeout(() => {
+    el.classList.remove("blink"); void el.offsetWidth; el.classList.add("blink");
+    // Classe retirée à la fin : un élément caché puis réaffiché ne doit pas reclignoter
+    el.addEventListener("animationend", () => el.classList.remove("blink"), { once: true });
+  }, delay);
+}
+function blinkHints() {
+  const hint = document.querySelector("#ex-sub .cta-hint");
+  if (!sel.dept && !sel.river) blinkOnce("dept", hint);
+  else if (sel.dept && !sel.river) { blinkOnce("river", hint); blinkOnce("desel", $("desel"), 2600); }
+}
 function updateExplore() {
   const { dept, river } = sel;
   bg.stHover = null;   // le tableau est reconstruit : plus de station survolée
@@ -1027,7 +1051,7 @@ function updateExplore() {
     const who = dept ? `des ${dept.n} stations du département` : `des ${DATA.nStations} stations`;
     if (mode === "rank") {
       const src = dept ? dept.rowsU : regionRows;
-      $("ex-sub").textContent = `Moyenne ${who}. Cliquez sur ${dept ? "un cours d'eau" : "un département ou un cours d'eau"} de la carte.`;
+      $("ex-sub").innerHTML = `Moyenne ${who}. <span class="cta-hint">Cliquez sur ${dept ? "un cours d'eau" : "un département"} de la carte.</span>`;
       table($("t-explore"), ALL_VARS.map(v => ({ label: `${VARLBL[v]}${dept ? " · " + dept.nom : ""}`, html: VARLBL[v], values: src[v], c: v })));
     } else {
       const obj = dept || DATA.regionRaw, key = dept ? "d" + dept.code : "region";
@@ -1035,6 +1059,7 @@ function updateExplore() {
       table($("t-explore"), ["pluie", "neige", "humidite", "temp"].map(v => ({ label: `${VARLBL[v]}${dept ? " · " + dept.nom : ""}`, html: VARLBL[v], values: measured(obj, key, v), c: v })));
     }
   }
+  blinkHints();
 }
 document.querySelectorAll("#gran button").forEach(b => b.addEventListener("click", () => {
   gran = b.dataset.v;
@@ -1383,6 +1408,7 @@ function enter(id) {
     if (id === "outro") { sel = { dept: null, river: null }; hovered = null; }
     regionMapState();
     flyTo(...pageView(id));
+    if (id === "p2") blinkHints();   // arrivée sur la page 3 : l'invitation à choisir un département clignote (une fois)
     return;
   }
   const c = cases[+$(id).dataset.case], r = riverByC[c.c];
