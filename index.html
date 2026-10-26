@@ -100,7 +100,8 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 #vue .vue-panel p:last-child { margin-bottom: 0; }
 /* Chiffres : des tuiles de couleur sous le cadre ; au survol, ce qu'elles comptent s'allume sur la carte */
 .stats { list-style: none; margin: 34px 0 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 30px; }
-.stats li { display: flex; flex-direction: column; align-items: center; cursor: default; outline: none; transition: opacity .2s; }
+.stats li { display: flex; flex-direction: column; align-items: center; cursor: default; outline: none; opacity: 0; transform: translateY(14px); transition: opacity .45s, transform .45s; }
+.stats li.shown { opacity: 1; transform: none; }   /* les chiffres apparaissent un par un (compteurs) */
 .stats b { font-size: clamp(40px, 4.2vw, 60px); font-weight: 700; line-height: .95; letter-spacing: -.02em; color: var(--c); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stats span { margin-top: 4px; padding: 2px 9px 3px; background: #14574f; color: #fff; font-size: 14px; font-weight: 600; line-height: 1.3; border-radius: 2px; text-align: center; }
 /* Au survol d'un chiffre, les autres s'estompent */
@@ -120,7 +121,7 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 /* Page 4 : ce que révèlent les données, la carte en fond et un grand cadre à onglets */
 /* Page 4 : les tendances défilent sous le titre, qui reste en haut jusqu'à la dernière ; tout est centré */
 #obs { position: relative; }
-.obs-flow { width: min(760px, calc(100vw - 2 * var(--gap) - 40px)); margin: 0 auto; padding-bottom: 45vh; pointer-events: auto; text-align: center; }
+.obs-flow { width: min(760px, calc(100vw - 2 * var(--gap) - 40px)); margin: 0 auto; padding-bottom: 50vh; pointer-events: auto; text-align: center; }
 /* Titre collé en haut : un dégradé sombre dessous, pour que les tendances passent derrière */
 .obs-head { position: sticky; top: 0; z-index: 2; padding: 5vh 0 34px;   /* transparent */
   transition: transform .6s ease, opacity .6s ease; }
@@ -137,7 +138,7 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 .obs-cap { margin: 14px auto 8px !important; font-size: 12.5px; color: var(--ink-2) !important; }
 .obs-tbl { padding-bottom: 22px; --pb: 22px; text-align: left; }   /* place pour le nom des encadrés */
 /* Texte vers les cinq cas : juste sous la dernière tendance, il défile avec elle */
-#obs .teaser { position: static; transform: none; margin: 16vh auto 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+#obs .teaser { position: static; transform: none; margin: 28vh auto 0; font-size: clamp(18px, 1.6vw, 22px); max-width: min(680px, 86vw); background: none; -webkit-backdrop-filter: none; backdrop-filter: none; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
 /* Flèche : elle monte du bas à la dernière tendance */
 #obs .obs-next { position: fixed; z-index: 2; right: calc(var(--gap) + 8px); bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   opacity: 0; pointer-events: none; transform: translateY(140%); transition: transform .6s ease, opacity .6s ease; }
@@ -1175,10 +1176,10 @@ function drawCaseTables() {
   // Tous les affluents d'un cours d'eau (directs et indirects), sans lui
   const tributaries = r => { const out = [], stack = [...childrenOf[r.i]]; while (stack.length) { const x = stack.pop(); out.push(x); stack.push(...childrenOf[x.i]); } return out; };
   const tiles = [
-    { v: `${f0(o.km)} km`, t: "de cours d'eau, canaux et fossés", show: "all" },
-    { v: `${f0(o.longest[1])} km`, t: `${esc(cap(o.longest[0]))}, le plus long cours d'eau`, show: () => [longest] },
-    { v: f0(o.biggest[1]), t: `affluents pour ${esc(o.biggest[0])}`, show: () => tributaries(biggest) },
-    { v: f0(DATA.nStations), t: "stations de mesure", show: "stations" },
+    { n: o.km, unit: " km", t: "de cours d'eau, canaux et fossés", show: "all" },
+    { n: o.longest[1], unit: " km", t: `${esc(cap(o.longest[0]))}, le plus long cours d'eau`, show: () => [longest] },
+    { n: o.biggest[1], unit: "", t: `affluents pour ${esc(o.biggest[0])}`, show: () => tributaries(biggest) },
+    { n: DATA.nStations, unit: "", t: "stations de mesure", show: "stations" },
   ];
   // Couleurs des tuiles : des teintes claires de l'échelle du tableau (plasma), lisibles sur le noir
   const colors = [0.62, 0.72, 0.82, 0.92].map(t => d3.interpolatePlasma(t));
@@ -1198,7 +1199,29 @@ function drawCaseTables() {
     placeLabels();
   }
   window.clearVueHighlight = () => vueHighlight(null);
-  $("stats").innerHTML = tiles.map((x, i) => `<li tabindex="0" style="--c:${colors[i]}"><b>${x.v}</b><span>${x.t}</span></li>`).join("");
+  $("stats").innerHTML = tiles.map((x, i) => `<li tabindex="0" style="--c:${colors[i]}"><b>${f0(x.n)}${x.unit}</b><span>${x.t}</span></li>`).join("");
+  // Compteurs : chaque chiffre apparaît et monte de 0 à sa valeur, l'un après l'autre
+  let run = 0;
+  window.playCounters = () => {
+    const me = ++run, lis = [...$("stats").querySelectorAll("li")], dur = 1100;
+    const show = (li, i, v) => { li.querySelector("b").textContent = f0(v) + tiles[i].unit; };
+    lis.forEach((li, i) => { li.classList.remove("shown"); show(li, i, 0); });
+    if (reduced) { lis.forEach((li, i) => { li.classList.add("shown"); show(li, i, tiles[i].n); }); return; }
+    lis.forEach((li, i) => setTimeout(() => {
+      if (me !== run) return;
+      li.classList.add("shown");
+      const t0 = performance.now();
+      const step = now => {
+        if (me !== run) return;
+        const u = Math.min(1, (now - t0) / dur);
+        show(li, i, Math.round(tiles[i].n * d3.easeCubicOut(u)));
+        if (u < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }, i * dur * 0.8));
+  };
+  // En quittant la page, les compteurs s'arrêtent ; ils repartiront de zéro au retour
+  window.stopCounters = () => { run++; };
   $("stats").querySelectorAll("li").forEach((li, i) => {
     const on = () => vueHighlight(tiles[i], colors[i]), off = () => vueHighlight(null);
     li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off);
@@ -1263,9 +1286,13 @@ function obsFromScroll() {
   $("obs-dots").querySelectorAll("button").forEach((d, i) => d.setAttribute("aria-current", i === cur));
   // « in » : la page occupe l'écran ; « done » : la dernière tendance est arrivée (le titre s'en va, le texte du bas arrive)
   sec.classList.toggle("in", r.top < mid && r.bottom > mid);
-  sec.classList.toggle("done", cur === OBS.length - 1);
+  // Bas du titre collé, mesuré sans son glissement (il est en haut de la section, puis collé en haut de l'écran)
+  const headBottom = Math.max(r.top, 0) + document.querySelector("#obs .obs-head").offsetHeight;
+  // Le titre s'en va quand le chiffre de la dernière tendance arrive juste sous lui (plutôt que de l'effacer)
+  const lastBig = $("obs-" + (OBS.length - 1)).querySelector(".big").getBoundingClientRect().top;
+  sec.classList.toggle("done", lastBig < headBottom + 90);
   // Les tendances s'effacent avant de passer sous le titre collé en haut (fondu sur 90 px, élément par élément)
-  const limit = sec.classList.contains("done") ? -Infinity : document.querySelector("#obs .obs-head").getBoundingClientRect().bottom;
+  const limit = sec.classList.contains("done") ? -Infinity : headBottom;
   document.querySelectorAll("#obs .obs-item > :not(.obs-tbl), #obs .obs-tbl > *").forEach(el => {   // les tableaux, ligne par ligne
     el.style.opacity = limit === -Infinity ? "" : clamp01((el.getBoundingClientRect().top - limit) / 90);
   });
@@ -1340,6 +1367,7 @@ function enter(id) {
   bg.page = id;
   bg.stHover = null;
   if (id !== "vue" && window.clearVueHighlight) clearVueHighlight();
+  if (id === "vue") playCounters(); else stopCounters();
   front.classed("explore", id === "p2").classed("no-click", clicksOff());
   const step = id.startsWith("c") ? +id.slice(1) : -1, nextBtn = $("next-step");
   nextBtn.hidden = step < 0;
