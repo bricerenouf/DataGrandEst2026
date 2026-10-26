@@ -1,0 +1,568 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>L'énigme de la Champagne</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Un élément masqué reste masqué, même si une règle lui donne un « display » */
+[hidden] { display: none !important; }
+/* Layout : la carte occupe tout l'écran et reste en place ; un panneau translucide se
+   pose dessus, à un endroit différent à chaque page (3 pages). Mode clair, sobre.
+   Inertie : du plus réactif (lavande clair) au plus inerte (gris ombre). Eau : bleu acier. */
+:root {
+  color-scheme: light;
+  --shadow: #272838;      /* encre ; rivières les plus inertes */
+  --grape: #5d536b;
+  --lavender: #7d6b91;
+  --lavgrey: #989fce;     /* rivières les plus réactives ; sol */
+  --blue: #347fc4;        /* l'eau ; « revenue à la normale » */
+  --ink-2: #5f6070;
+  --rule: rgba(39, 40, 56, .14);
+  --glass: rgba(255, 255, 255, .84);
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --s-xs: 11px; --s-sm: 12.5px; --s-md: 14px; --s-lg: 21px;
+  --gap: 20px;
+}
+html, body { height: 100%; }
+body { margin: 0; overflow: hidden; background: #eeeef2; color: var(--shadow); font: 400 var(--s-md)/1.5 var(--font); }
+* { box-sizing: border-box; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+#map { position: fixed; inset: 0; background: #eeeef2; }
+.glass { background: var(--glass); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid var(--rule); border-radius: 3px; }
+
+.panel { position: fixed; z-index: 1000; width: 390px; max-height: calc(100% - 2 * var(--gap) - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto; padding: 20px 22px 18px; transition: opacity .3s; }
+.panel.fade { opacity: 0; }
+.panel.pos-1 { left: var(--gap); top: calc(var(--gap) + env(safe-area-inset-top, 0px)); }
+.panel.pos-2 { right: var(--gap); top: calc(var(--gap) + env(safe-area-inset-top, 0px)); }
+.panel.pos-3 { left: var(--gap); bottom: calc(var(--gap) + 52px + env(safe-area-inset-bottom, 0px)); }
+
+.eyebrow { margin: 0 0 6px; font-size: var(--s-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--lavender); }
+h1 { margin: 0 0 10px; font-size: var(--s-lg); font-weight: 600; line-height: 1.2; text-wrap: balance; }
+p { margin: 0 0 10px; }
+.lead { font-weight: 500; }
+.muted { color: var(--ink-2); }
+b.num { font-weight: 600; font-variant-numeric: tabular-nums; }
+figure { margin: 6px 0 14px; }
+figcaption { font-size: var(--s-xs); color: var(--ink-2); line-height: 1.4; margin-top: 3px; }
+.ttl { font-size: var(--s-sm); font-weight: 600; margin-bottom: 4px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--font); font-size: 10.5px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+svg .lbl { fill: var(--shadow); font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--s-xs); color: var(--ink-2); margin: 4px 0 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.hint { font-size: var(--s-xs); color: var(--ink-2); border-top: 1px solid var(--rule); padding-top: 8px; margin: 6px 0 0; }
+
+/* Curseur de temps */
+.timer { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin: 4px 0 6px; }
+.play { border: 1px solid var(--rule); background: #fff; border-radius: 2px; width: 30px; height: 28px; cursor: pointer; font-size: 12px; }
+.play:hover { border-color: var(--blue); }
+input[type="range"] { width: 100%; accent-color: var(--blue); }
+.clock { font-size: var(--s-sm); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 7.5em; text-align: right; }
+
+/* Tapissage des suspects */
+.suspects { display: grid; gap: 2px; margin: 4px 0 6px; }
+.grp { font-size: var(--s-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); margin-top: 6px; }
+.suspect { display: grid; grid-template-columns: 1fr 96px 34px; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: 0; border-radius: 2px; background: none; padding: 3px 6px; cursor: pointer; font-size: var(--s-sm); }
+.suspect:hover { background: rgba(52, 127, 196, .08); }
+.suspect[aria-pressed="true"] { background: var(--shadow); color: #fff; }
+.suspect[aria-pressed="true"] .val { color: #fff; }
+.suspect .bar { height: 7px; background: var(--rule); position: relative; }
+.suspect .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--lavender); }
+.suspect[aria-pressed="true"] .bar { background: rgba(255, 255, 255, .25); }
+.suspect[aria-pressed="true"] .bar i { background: #fff; }
+.suspect .val { font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-2); }
+
+/* Navigation entre les pages */
+.nav { position: fixed; z-index: 1001; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 2px; padding: 4px; }
+.nav button { border: 0; background: none; padding: 6px 12px; border-radius: 2px; cursor: pointer; font-size: var(--s-sm); color: var(--ink-2); white-space: nowrap; }
+.nav button:hover { color: var(--shadow); }
+.nav button[aria-current="page"] { background: var(--shadow); color: #fff; }
+.nav .arrow { font-size: 15px; padding: 4px 10px; }
+.nav .arrow:disabled { opacity: .3; cursor: default; }
+
+/* Fiche station */
+.card { position: fixed; z-index: 1000; width: 320px; padding: 14px 16px 12px; }
+.card.at-1 { right: var(--gap); bottom: calc(var(--gap) + 52px + env(safe-area-inset-bottom, 0px)); }
+.card.at-2 { left: var(--gap); bottom: calc(var(--gap) + 52px + env(safe-area-inset-bottom, 0px)); }
+.card.at-3 { right: var(--gap); top: calc(var(--gap) + env(safe-area-inset-top, 0px)); }
+.card h2 { margin: 0; font-size: 15px; font-weight: 600; padding-right: 22px; }
+.card .x { position: absolute; top: 8px; right: 10px; border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--ink-2); }
+.card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 10px 0 8px; }
+.card dl div { background: rgba(255, 255, 255, .7); padding: 5px 7px; }
+.card dt { font-size: 10px; color: var(--ink-2); line-height: 1.2; }
+.card dd { margin: 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Leaflet : feuille de style minimale (seul le script est chargé depuis le CDN) */
+.leaflet-pane, .leaflet-tile, .leaflet-marker-icon, .leaflet-tile-container, .leaflet-pane > svg, .leaflet-pane > canvas, .leaflet-layer { position: absolute; left: 0; top: 0; }
+.leaflet-container { overflow: hidden; -webkit-tap-highlight-color: transparent; font-family: var(--font); outline-offset: -2px; }
+.leaflet-container img.leaflet-tile { max-width: none !important; max-height: none !important; padding: 0; border: 0; }
+.leaflet-tile { user-select: none; visibility: hidden; }
+.leaflet-tile-loaded { visibility: inherit; }
+.leaflet-tile-container { pointer-events: none; }
+.leaflet-container.leaflet-touch-zoom { touch-action: pan-x pan-y; }
+.leaflet-container.leaflet-touch-drag { touch-action: pinch-zoom; }
+.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom { touch-action: none; }
+.leaflet-pane { z-index: 400; }
+.leaflet-tile-pane { z-index: 200; }
+.leaflet-overlay-pane { z-index: 400; }
+.leaflet-marker-pane { z-index: 600; }
+.leaflet-tooltip-pane { z-index: 650; }
+.leaflet-map-pane canvas { z-index: 100; }
+.leaflet-zoom-animated { transform-origin: 0 0; }
+.leaflet-zoom-anim .leaflet-zoom-animated { transition: transform .25s cubic-bezier(0, 0, .25, 1); }
+.leaflet-zoom-anim .leaflet-zoom-hide { visibility: hidden; }
+.leaflet-fade-anim .leaflet-tile { will-change: opacity; }
+.leaflet-interactive { cursor: pointer; }
+.leaflet-grab { cursor: grab; }
+.leaflet-dragging .leaflet-grab { cursor: grabbing; }
+.leaflet-marker-icon { pointer-events: none; }
+.leaflet-top, .leaflet-bottom { position: absolute; z-index: 1000; pointer-events: none; }
+.leaflet-top { top: 0; } .leaflet-right { right: 0; } .leaflet-bottom { bottom: 0; } .leaflet-left { left: 0; }
+.leaflet-control { position: relative; z-index: 800; pointer-events: auto; float: left; clear: both; }
+.leaflet-right .leaflet-control { float: right; margin-right: 10px; }
+.leaflet-bottom .leaflet-control { margin-bottom: 6px; }
+.leaflet-control-attribution { background: rgba(255, 255, 255, .75); padding: 0 5px; font-size: 10px; color: var(--ink-2); }
+.leaflet-control-attribution a { color: var(--ink-2); }
+.leaflet-tooltip { position: absolute; pointer-events: none; white-space: nowrap; background: var(--shadow); color: #fff; border-radius: 2px; padding: 4px 8px; font-size: var(--s-sm); }
+.leaflet-tooltip .muted { color: rgba(255, 255, 255, .75); }
+.map-label { white-space: nowrap; width: max-content; transform: translate(-50%, -50%); font-size: 11px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--grape); text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+
+@media (max-width: 760px) {
+  .panel, .panel.pos-1, .panel.pos-2, .panel.pos-3 { left: 10px; right: 10px; top: auto; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); width: auto; max-height: 50%; }
+  .card, .card.at-1, .card.at-2, .card.at-3 { left: 10px; right: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; width: auto; }
+  .nav .lab { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel { transition: none; }
+  .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; }
+}
+</style>
+
+<div id="map" aria-label="Carte des rivières du Grand Est"></div>
+<article class="panel glass pos-1" id="panel" aria-live="polite"></article>
+
+<aside class="card glass at-1" id="card" hidden>
+  <button class="x" type="button" id="card-x" aria-label="Fermer la fiche">×</button>
+  <h2 id="card-name"></h2>
+  <div class="muted" style="font-size:var(--s-sm)" id="card-sub"></div>
+  <dl>
+    <div><dt>Retour à la normale</dt><dd id="card-t"></dd></div>
+    <div><dt>Retour à la normale du sol</dt><dd id="card-ts"></dd></div>
+    <div><dt>Automne 2022 : retour du sol</dt><dd id="card-rs"></dd></div>
+    <div><dt>Automne 2022 : retour de la rivière</dt><dd id="card-rr"></dd></div>
+  </dl>
+  <div id="card-chart"></div>
+</aside>
+
+<nav class="nav glass" aria-label="Pages">
+  <button class="arrow" type="button" id="prev" aria-label="Page précédente">←</button>
+  <button type="button" data-page="1">1<span class="lab"> · L'énigme</span></button>
+  <button type="button" data-page="2">2<span class="lab"> · L'enquête</span></button>
+  <button type="button" data-page="3">3<span class="lab"> · La preuve</span></button>
+  <button class="arrow" type="button" id="next" aria-label="Page suivante">→</button>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-river@1.0.1/dist/Leaflet.river.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+const BASEMAP = /*__BASEMAP__*/null;
+
+// ---------- Outils ----------
+const $ = id => document.getElementById(id);
+const nf0 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+const nf2f = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const nf2 = v => nf2f.format(v).replace("-", "−");
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const sem = n => `${nf1.format(n)} semaine${n >= 2 ? "s" : ""}`;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const mobile = matchMedia("(max-width: 760px)").matches;
+const css = getComputedStyle(document.documentElement);
+const tok = k => css.getPropertyValue("--" + k).trim();
+const C = { shadow: tok("shadow"), grape: tok("grape"), lavender: tok("lavender"), lavgrey: tok("lavgrey"), blue: tok("blue"), rule: "#d9d9e3" };
+const decode = arr => {
+  const out = []; let x = 0, y = 0;
+  for (let i = 0; i < arr.length; i += 2) { x += arr[i]; y += arr[i + 1]; out.push([y / DATA.q, x / DATA.q]); }
+  return out;
+};
+const F = DATA.facts, S = DATA.stations;
+const byName = Object.fromEntries(S.map(s => [s.n, s]));
+const replayStart = new Date(F.replayStart);
+const weekDate = w => new Date(replayStart.getTime() + w * 6048e5);
+const fmtDate = d => d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+const fmtMonth = d => d.toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
+
+// Classes d'inertie (temps de retour à la normale)
+const INERTIA = [
+  { lo: 1, hi: 4, color: C.lavgrey, label: "2 à 4 sem. (réactive)" },
+  { lo: 5, hi: 8, color: C.lavender, label: "5 à 8" },
+  { lo: 9, hi: 16, color: C.grape, label: "9 à 16" },
+  { lo: 17, hi: 99, color: C.shadow, label: "17 et plus (inerte)" },
+];
+const inClass = t => INERTIA.findIndex(c => t >= c.lo && t <= c.hi);
+const legendInertia = () => `<div class="legend">${INERTIA.map(c => `<span><i style="background:${c.color}"></i>${c.label}</span>`).join("")}</div>`;
+
+// ---------- Petits graphiques SVG ----------
+const W = 340;
+const svg = (h, body) => `<svg viewBox="0 0 ${W} ${h}" role="img">${body}</svg>`;
+const path = pts => pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join("");
+
+// Page 1 : part des stations encore loin de la normale, k semaines après un écart
+function chartEcho(k) {
+  const h = 130, l = 30, r = 10, t = 10, b = 20, x = w => l + w / 52 * (W - l - r), y = v => t + (1 - v) * (h - t - b);
+  const groups = [
+    { sel: s => s.dept === DATA.names.champagne, color: C.shadow, label: "Marne" },
+    { sel: s => s.dept !== DATA.names.champagne, color: C.lavgrey, label: "reste du Grand Est" },
+  ];
+  let out = `<line x1="${l}" x2="${W - r}" y1="${y(0)}" y2="${y(0)}" stroke="${C.rule}"/>`;
+  [0, 13, 26, 39, 52].forEach(w => (out += `<text x="${x(w)}" y="${h - 5}" text-anchor="middle">${w}</text>`));
+  [0, 0.5, 1].forEach(v => (out += `<text x="${l - 6}" y="${y(v) + 4}" text-anchor="end">${nf0.format(v * 100)} %</text>`));
+  groups.forEach(g => {
+    const st = S.filter(g.sel), pts = [];
+    for (let w = 0; w <= 52; w++) pts.push([x(w), y(st.filter(s => s.t > w).length / st.length)]);
+    out += `<path d="${path(pts)}" fill="none" stroke="${g.color}" stroke-width="2"/>`;
+    const v = st.filter(s => s.t > k).length / st.length;
+    out += `<circle cx="${x(k)}" cy="${y(v)}" r="3.5" fill="${g.color}" stroke="#fff" stroke-width="1.2"/>`;
+    out += `<text class="lbl" x="${x(k) + 6}" y="${y(v) - 5}">${g.label} · ${nf0.format(v * 100)} %</text>`;
+  });
+  out += `<line x1="${x(k)}" x2="${x(k)}" y1="${t}" y2="${y(0)}" stroke="${C.blue}" stroke-width="1"/>`;
+  return svg(h, out);
+}
+
+// Page 2 : retour à la normale de la rivière contre celui de son propre sol
+function chartSoil() {
+  const h = 170, l = 28, r = 10, t = 8, b = 24, maxX = 22, maxY = 42;
+  const x = v => l + v / maxX * (W - l - r), y = v => t + (1 - v / maxY) * (h - t - b);
+  let out = `<path d="M${x(0)},${y(0)}L${x(maxX)},${y(maxX)}L${x(0)},${y(maxX)}Z" fill="${C.lavgrey}" fill-opacity=".14"/>`;
+  out += `<line x1="${x(0)}" x2="${x(maxX)}" y1="${y(0)}" y2="${y(maxX)}" stroke="${C.shadow}" stroke-dasharray="3 3" stroke-width=".8"/>`;
+  out += `<text x="${x(1)}" y="${y(36)}" class="lbl">rivière plus lente</text><text x="${x(1)}" y="${y(32)}" class="lbl">que son sol</text>`;
+  out += `<text x="${x(maxX)}" y="${y(maxX) + 14}" text-anchor="end">même vitesse</text>`;
+  [0, 10, 20].forEach(v => (out += `<text x="${x(v)}" y="${h - 8}" text-anchor="middle">${v}</text>`));
+  out += `<text x="${W - r}" y="${h - 8}" text-anchor="end">sol (sem.)</text>`;
+  [0, 20, 40].forEach(v => (out += `<text x="${l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`));
+  [false, true].forEach(champ => S.filter(s => s.champ === champ).forEach(s => {
+    const jx = ((s.lat * 1000) % 7 - 3) * 0.05;   // léger décalage pour ne pas empiler les points égaux
+    out += `<circle cx="${x(s.ts + jx).toFixed(1)}" cy="${y(s.t).toFixed(1)}" r="${champ ? 3.4 : 2.4}" fill="${champ ? C.shadow : C.lavgrey}" fill-opacity="${champ ? 1 : 0.7}"${champ ? ' stroke="#fff" stroke-width=".8"' : ""}/>`;
+  }));
+  return svg(h, out) + `<div class="legend"><span><i style="background:${C.shadow}"></i>Marne</span><span><i style="background:${C.lavgrey}"></i>reste du Grand Est</span><span>rivière (sem.) en hauteur</span></div>`;
+}
+
+// Page 3 : part des stations revenues à la normale depuis l'été 2022
+function chartReplay(k) {
+  const h = 136, l = 30, r = 10, t = 10, b = 22, n = F.replayWeeks;
+  const x = w => l + w / (n - 1) * (W - l - r), y = v => t + (1 - v) * (h - t - b);
+  const series = [
+    { label: "sol", color: C.lavgrey, dash: "4 3", v: w => S.filter(s => s.rs !== null && s.rs <= w).length / S.length },
+    { label: "rivières du reste du Grand Est", color: C.blue, v: w => { const g = S.filter(s => !s.champ); return g.filter(s => s.rr !== null && s.rr <= w).length / g.length; } },
+    { label: "rivières de la Marne", color: C.shadow, v: w => { const g = S.filter(s => s.champ); return g.filter(s => s.rr !== null && s.rr <= w).length / g.length; } },
+  ];
+  let out = `<line x1="${l}" x2="${W - r}" y1="${y(0)}" y2="${y(0)}" stroke="${C.rule}"/>`;
+  [0, 0.5, 1].forEach(v => (out += `<text x="${l - 6}" y="${y(v) + 4}" text-anchor="end">${nf0.format(v * 100)} %</text>`));
+  [0, 26, 52].forEach(w => (out += `<text x="${x(w)}" y="${h - 6}" text-anchor="middle">${fmtMonth(weekDate(w))}</text>`));
+  series.forEach((sr, i) => {
+    const pts = []; for (let w = 0; w < n; w++) pts.push([x(w), y(sr.v(w))]);
+    out += `<path d="${path(pts)}" fill="none" stroke="${sr.color}" stroke-width="2" ${sr.dash ? `stroke-dasharray="${sr.dash}"` : ""}/>`;
+    const v = sr.v(k);
+    out += `<circle cx="${x(k)}" cy="${y(v)}" r="3.2" fill="${sr.color}" stroke="#fff" stroke-width="1.2"/>`;
+  });
+  out += `<line x1="${x(k)}" x2="${x(k)}" y1="${t}" y2="${y(0)}" stroke="${C.blue}" stroke-width="1"/>`;
+  return svg(h, out) + `<div class="legend">${series.map(sr => `<span><i style="background:${sr.color};border-radius:0;height:3px"></i>${sr.label}</span>`).join("")}</div>`;
+}
+
+// Fiche : décroissance de l'écart pour une station, avec le seuil de retour à la normale
+function chartStation(s) {
+  const h = 70, l = 4, r = 4, t = 6, b = 16, x = w => l + w / 52 * (W - l - r), y = v => t + (1 - v) * (h - t - b), th = 1 / Math.E;
+  let out = `<line x1="${l}" x2="${W - r}" y1="${y(th)}" y2="${y(th)}" stroke="${C.shadow}" stroke-dasharray="3 3" stroke-width=".7"/>`;
+  out += `<path d="${path(s.acf.map((v, w) => [x(w), y(v)]))}" fill="none" stroke="${INERTIA[inClass(s.t)].color}" stroke-width="2"/>`;
+  out += `<circle cx="${x(s.t)}" cy="${y(s.acf[s.t] ?? 0)}" r="3.5" fill="${C.blue}" stroke="#fff"/>`;
+  [0, 26, 52].forEach(w => (out += `<text x="${x(w)}" y="${h - 3}" text-anchor="${w ? (w === 52 ? "end" : "middle") : "start"}">${w} sem.</text>`));
+  return svg(h, out) + `<div class="muted" style="font-size:var(--s-xs)">Ressemblance du débit avec lui-même au fil des semaines. Sous le pointillé, la rivière est revenue à la normale.</div>`;
+}
+
+// ---------- Carte ----------
+const riverRenderer = L.canvas({ padding: 0.5 });
+const map = L.map("map", { renderer: riverRenderer, zoomControl: false, scrollWheelZoom: false, zoomSnap: 0.25, minZoom: 6, maxZoom: 14 });
+map.attributionControl.setPrefix(false);
+L.tileLayer(BASEMAP.url, BASEMAP.options).addTo(map);
+const base = L.canvas({ padding: 0.5 });
+const world = [[-85, -179], [-85, 179], [85, 179], [85, -179]];
+L.polygon([world, ...DATA.region.map(decode)], { renderer: base, interactive: false, stroke: false, fillColor: "#fff", fillOpacity: 0.5 }).addTo(map);
+DATA.depts.forEach(d => L.polygon(d.g.map(decode), { renderer: base, interactive: false, fill: false, color: C.lavgrey, weight: 0.7, opacity: 0.7 }).addTo(map));
+const regionBounds = L.latLngBounds(DATA.region.flatMap(decode));
+
+// Le département de la Marne, mis en avant à partir de la page 2
+const marne = DATA.depts.find(d => d.nom === "Marne");
+const marneLayer = L.polygon(marne.g.map(decode), { renderer: base, interactive: false, color: C.grape, weight: 1.2, dashArray: "4 3", fillColor: C.lavgrey, fillOpacity: 0.22 });
+const marneBounds = marneLayer.getBounds();
+const marneLabel = L.marker(marneBounds.getCenter(), { interactive: false, keyboard: false, icon: L.divIcon({ className: "", iconSize: null, html: '<div class="map-label">Marne</div>' }) });
+const showMarne = on => (on ? [marneLayer, marneLabel].forEach(l => l.addTo(map)) : [marneLayer, marneLabel].forEach(l => l.remove()));
+
+// Rivières de fond : Leaflet.River, largeur croissante vers l'aval
+function taperedRiver(lines, rp) {
+  const parts = lines.map(ll => L.river(ll, { minWidth: 1, maxWidth: 1 }));
+  parts.forEach(part => part.eachLayer(seg => (seg.options.interactive = false)));
+  const group = L.featureGroup(parts);
+  group.setRiverStyle = ({ color, opacity = 1, minW, maxW }) => parts.forEach((part, j) => {
+    const [p0, p1] = rp[j];
+    const o = { color, opacity, minWidth: minW + (maxW - minW) * p0, maxWidth: minW + (maxW - minW) * p1 };
+    part._map ? part.setStyle(o) : L.setOptions(part, o);
+  });
+  return group;
+}
+const maxK = Math.max(...DATA.background.map(b => b.k));
+DATA.background.forEach(b => {
+  if (b.rp) {
+    const l = taperedRiver(b.g.map(decode), b.rp);
+    l.setRiverStyle({ color: C.blue, opacity: 0.55, minW: 0.5, maxW: 0.9 + 2.2 * Math.sqrt(b.k / maxK) });
+    l.addTo(map);
+  } else {
+    L.polyline(b.g.map(decode), { interactive: false, color: C.blue, opacity: 0.45, weight: 0.8 }).addTo(map);
+  }
+});
+
+// Stations
+const dotRenderer = L.canvas({ padding: 0.5, tolerance: 5 });
+S.forEach(s => {
+  s.dot = L.circleMarker([s.lat, s.lon], { renderer: dotRenderer, radius: 5.5, weight: 1.5, color: "#fff", fillOpacity: 1 }).addTo(map);
+  s.dot.bindTooltip(() => `<b>${esc(s.n)}</b><br><span class="muted">${tip(s)}</span>`, { direction: "top", offset: [0, -6] });
+  s.dot.on("click", () => openCard(s));
+});
+let tip = s => `retour à la normale en ${sem(s.t)}`;
+const styleStations = fn => S.forEach(s => s.dot.setStyle(fn(s)));
+const byInertia = s => ({ fillColor: INERTIA[inClass(s.t)].color, radius: 5.5, fillOpacity: 1, opacity: 1 });
+
+// ---------- Fiche station ----------
+let selected = null, page = 0;
+function openCard(s) {
+  if (selected) selected.dot.setStyle({ color: "#fff", weight: 1.5 });
+  selected = s;
+  s.dot.setStyle({ color: C.blue, weight: 3 });
+  s.dot.bringToFront();
+  $("card-name").textContent = s.n;
+  $("card-sub").textContent = s.riv;
+  $("card-t").textContent = sem(s.t);
+  $("card-ts").textContent = sem(s.ts);
+  $("card-rs").textContent = s.rs === null ? "—" : fmtDate(weekDate(s.rs));
+  $("card-rr").textContent = s.rr === null ? "pas dans l'année" : fmtDate(weekDate(s.rr));
+  $("card-chart").innerHTML = chartStation(s);
+  $("card").className = `card glass at-${page}`;
+  $("card").hidden = false;
+}
+function closeCard() {
+  if (selected) selected.dot.setStyle({ color: "#fff", weight: 1.5 });
+  selected = null;
+  $("card").hidden = true;
+}
+$("card-x").addEventListener("click", closeCard);
+
+// ---------- Curseur de temps (pages 1 et 3) ----------
+let timer = null;
+function stopTimer() { if (timer) clearInterval(timer); timer = null; const b = $("play"); if (b) b.textContent = "▶"; }
+function bindTimer(max, onChange, stepMs) {
+  const range = $("range"), play = $("play");
+  range.addEventListener("input", () => { stopTimer(); onChange(+range.value); });
+  play.addEventListener("click", () => {
+    if (timer) return stopTimer();
+    if (+range.value >= max) range.value = 0;
+    play.textContent = "❚❚";
+    timer = setInterval(() => {
+      range.value = Math.min(max, +range.value + 1);
+      onChange(+range.value);
+      if (+range.value >= max) stopTimer();
+    }, reduced ? 0 : stepMs);
+  });
+  onChange(+range.value);
+}
+
+// ---------- Pages ----------
+const pad = p => (mobile ? { paddingTopLeft: [20, 60], paddingBottomRight: [20, innerHeight * 0.5] }
+  : p === 2 ? { paddingTopLeft: [40, 40], paddingBottomRight: [450, 70] }
+  : { paddingTopLeft: [450, 40], paddingBottomRight: [40, 70] });
+const fly = (b, p, opt = {}) => map.flyToBounds(b, { ...pad(p), duration: reduced ? 0 : 1.2, ...opt });
+const reactive = byName[DATA.names.reactive], inerte = byName[DATA.names.inerte];
+
+// Page 1 : chaque station s'estompe au rythme de son propre retour à la normale
+function echo(k) {
+  $("clock").textContent = `semaine ${k}`;
+  styleStations(s => {
+    const v = s.acf[k] ?? 0, back = k >= s.t;
+    return { fillColor: INERTIA[inClass(s.t)].color, radius: back ? 2.5 : 3 + 5 * v, fillOpacity: back ? 0.25 : 1, opacity: back ? 0.3 : 1 };
+  });
+  $("echo").innerHTML = chartEcho(k);
+}
+
+// Page 2 : un clic sur un suspect recolore les stations selon ce suspect (4 classes de quantiles)
+let suspect = null;
+function showSuspect(col) {
+  suspect = suspect === col ? null : col;
+  document.querySelectorAll("[data-sus]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sus === suspect));
+  if (!suspect) { styleStations(byInertia); tip = s => `rivière : ${sem(s.t)} · sol : ${sem(s.ts)}`; $("sus-legend").innerHTML = legendInertia(); return; }
+  const def = F.suspects.find(x => x.col === col);
+  const vals = S.map(s => s.sus[col]).filter(v => v !== null).sort((a, b) => a - b);
+  const q = [0.25, 0.5, 0.75].map(p => vals[Math.floor(p * (vals.length - 1))]);
+  const ramp = def.rho >= 0 ? [C.lavgrey, C.lavender, C.grape, C.shadow] : [C.shadow, C.grape, C.lavender, C.lavgrey];
+  styleStations(s => {
+    const v = s.sus[col];
+    if (v === null) return { fillColor: "#fff", radius: 3, fillOpacity: 1, opacity: 0.5 };
+    return { fillColor: ramp[q.filter(x => v > x).length], radius: 5.5, fillOpacity: 1, opacity: 1 };
+  });
+  tip = s => `${esc(def.label)} : ${s.sus[col] === null ? "—" : nf1.format(col === "position_m" ? s.sus[col] / 1000 : s.sus[col])} · retour en ${sem(s.t)}`;
+  $("sus-legend").innerHTML = `<div class="legend"><span>${esc(def.label)} : du plus faible au plus fort</span>${ramp.map(c => `<span><i style="background:${c}"></i></span>`).join("")}</div>
+    <p class="muted" style="font-size:var(--s-xs);margin:0">Si cette carte ressemble à celle du retour à la normale, le suspect est impliqué.</p>`;
+}
+
+// Page 3 : l'automne 2022 rejoué semaine par semaine
+function replay(k) {
+  $("clock").textContent = fmtDate(weekDate(k));
+  styleStations(s => {
+    const p = s.w[k];
+    if (p === null || p === undefined) return { fillColor: "#fff", radius: 3, fillOpacity: 1, opacity: 0.5 };
+    const color = p >= 0 ? C.blue : p > -50 ? C.lavender : C.shadow;
+    return { fillColor: color, radius: s.champ ? 6.5 : 5, fillOpacity: 1, opacity: 1 };
+  });
+  $("replay").innerHTML = chartReplay(k);
+}
+
+const PAGES = {
+  1: {
+    html: () => `
+      <p class="eyebrow">L'énigme de la Champagne · 1 / 3</p>
+      <h1>Pourquoi certaines rivières mettent un an à se remettre ?</h1>
+      <p>La pluie n'a aucune inertie : dans les ${F.n} stations, elle revient à la normale en ${sem(F.rain[0])}. Chaque semaine repart de zéro.</p>
+      <p>Les rivières, non. Après une crue ou une sécheresse, la plupart reviennent à la normale en ${sem(F.otherMed)}. <span class="lead">Dans la Marne, au cœur de la Champagne, il leur en faut ${nf1.format(F.champMed)}.</span></p>
+      <div class="timer">
+        <button class="play" type="button" id="play" aria-label="Lancer">▶</button>
+        <input type="range" id="range" min="0" max="52" value="0" aria-label="Semaines après un écart">
+        <span class="clock" id="clock"></span>
+      </div>
+      <figure>
+        <div class="ttl">Stations encore loin de la normale, semaine après semaine</div>
+        <div id="echo"></div>
+        <figcaption>Faites avancer le temps : sur la carte, chaque station s'efface quand elle revient à la normale. À la semaine 20, il ne reste presque que la Champagne.</figcaption>
+      </figure>
+      ${legendInertia()}
+      <p class="hint">Retour à la normale : nombre de semaines pour qu'un écart de débit perde l'essentiel de son effet (autocorrélation sous 0,37, une fois le cycle des saisons retiré ; d'après l'« effet mémoire » de Mangin, 1984). Cliquez sur une station pour sa fiche.</p>`,
+    enter() {
+      showMarne(false);
+      tip = s => `retour à la normale en ${sem(s.t)}`;
+      fly(regionBounds, 1);
+    },
+    bind() { bindTimer(52, echo, 160); },
+  },
+  2: {
+    html: () => `
+      <p class="eyebrow">L'énigme de la Champagne · 2 / 3</p>
+      <h1>L'enquête</h1>
+      <p>Premier réflexe : une grande rivière, avec des dizaines d'affluents, devrait mettre plus longtemps à revenir à la normale. <span class="lead">Elle a un alibi.</span> Tout ce qui mesure la taille ne joue presque pas.</p>
+      <div class="suspects">
+        <div class="grp">La taille · innocentée</div>
+        ${F.suspects.filter(x => x.group === "taille").map(suspectRow).join("")}
+        <div class="grp">Les indices</div>
+        ${F.suspects.filter(x => x.group === "indice").map(suspectRow).join("")}
+      </div>
+      <div id="sus-legend">${legendInertia()}</div>
+      <p class="muted" style="font-size:var(--s-xs)">Barre : force du lien avec le temps de retour à la normale (corrélation de rang, de 0 à 0,5). Cliquez sur un suspect pour le voir sur la carte.</p>
+      <p>Les indices décrivent tous le même endroit : une plaine peu enneigée, au sol plutôt sec, où les rivières serpentent et ont peu d'affluents. Comme si l'eau passait ailleurs que par la surface.</p>
+      <p class="lead">Le coupable est sous nos pieds.</p>
+      <p>Pour le confirmer, on compare chaque rivière à son propre sol. D'ordinaire, la rivière revient à la normale avant lui : l'eau ruisselle et file. Dans la Marne, c'est l'inverse pour ${F.champSlower} rivières sur ${F.champN}. Ailleurs, pour ${F.offSlower} sur ${F.offN}.</p>
+      <figure>
+        <div class="ttl">Retour à la normale : la rivière face à son sol</div>
+        ${chartSoil()}
+        <figcaption>Chaque point est une station. Au-dessus du pointillé, la rivière est plus lente que le sol qui l'entoure : son eau vient d'une réserve plus profonde.</figcaption>
+      </figure>
+      <p>Une réserve souterraine qui se remplit et se vide lentement : c'est ce qu'on attend d'un sous-sol poreux, comme la craie de Champagne.</p>`,
+    enter() {
+      showMarne(true);
+      suspect = null;
+      styleStations(byInertia);
+      tip = s => `rivière : ${sem(s.t)} · sol : ${sem(s.ts)}`;
+      fly(regionBounds, 2);
+    },
+    bind() { document.querySelectorAll("[data-sus]").forEach(b => b.addEventListener("click", () => showSuspect(b.dataset.sus))); },
+  },
+  3: {
+    html: () => `
+      <p class="eyebrow">L'énigme de la Champagne · 3 / 3</p>
+      <h1>La preuve : l'automne 2022</h1>
+      <p>L'été 2022 a asséché tout le Grand Est. Rejouons la fin de la sécheresse, semaine par semaine.</p>
+      <div class="timer">
+        <button class="play" type="button" id="play" aria-label="Lancer">▶</button>
+        <input type="range" id="range" min="0" max="${F.replayWeeks - 1}" value="0" aria-label="Semaine">
+        <span class="clock" id="clock"></span>
+      </div>
+      <figure>
+        <div class="ttl">Stations revenues à la normale</div>
+        <div id="replay"></div>
+      </figure>
+      <p>Le sol revient à la normale vers le ${fmtDate(new Date(F.soilBackDate))}. La plupart des rivières n'attendent pas : elles reviennent ${sem(Math.abs(F.lagOff))} ${F.lagOff < 0 ? "avant lui" : "après lui"}.</p>
+      <p class="lead">Les rivières de la Marne, elles, reviennent ${sem(Math.abs(F.lagChamp))} ${F.lagChamp < 0 ? "avant" : "après"} le sol, le temps que la réserve se remplisse. ${F.champNotBack} sur ${F.champN} ne sont toujours pas revenues un an plus tard, contre ${F.offNotBack} sur ${F.offN} ailleurs.</p>
+      <p>La Marne ne reçoit pas plus de pluie que le reste de la région, mais moins (${nf0.format(F.champRain)} mm par an contre ${nf0.format(F.offRain)}). Ses rivières ne sont pas plus grandes, mais plus petites (${nf0.format(F.champKm)} km de réseau en amont contre ${nf0.format(F.offKm)}). <span class="lead">Ce qui la distingue est sous ses pieds.</span></p>
+      <div class="legend"><span><i style="background:${C.blue}"></i>revenue à la normale</span><span><i style="background:${C.lavender}"></i>sous la normale</span><span><i style="background:${C.shadow}"></i>moins de la moitié de la normale</span><span>gros points : Marne</span></div>
+      <p class="hint">Données : débits, humidité des sols et pluie de ${F.n} stations, 2000-2026 ; réseau BD TOPAGE (Sandre / IGN). Fond de carte ${esc(BASEMAP.credit)}.</p>`,
+    enter() {
+      showMarne(true);
+      tip = s => `retour du sol : ${s.rs === null ? "—" : fmtDate(weekDate(s.rs))} · de la rivière : ${s.rr === null ? "pas dans l'année" : fmtDate(weekDate(s.rr))}`;
+      fly(marneBounds.pad(0.6), 3);
+    },
+    bind() { bindTimer(F.replayWeeks - 1, replay, 220); },
+  },
+};
+function suspectRow(x) {
+  return `<button class="suspect" type="button" data-sus="${x.col}" aria-pressed="false"><span>${esc(x.label)}</span>
+    <span class="bar"><i style="width:${Math.min(100, Math.abs(x.rho) / 0.5 * 100).toFixed(0)}%"></i></span><span class="val">${nf2(x.rho)}</span></button>`;
+}
+
+function go(p) {
+  p = Math.max(1, Math.min(3, p));
+  if (p === page) return;
+  stopTimer();
+  page = p;
+  closeCard();
+  PAGES[p].enter();
+  const panel = $("panel");
+  panel.classList.add("fade");
+  setTimeout(() => {
+    panel.className = `panel glass pos-${p}`;
+    panel.innerHTML = PAGES[p].html();
+    panel.scrollTop = 0;
+    PAGES[p].bind?.();
+  }, reduced ? 0 : 280);
+  document.querySelectorAll(".nav [data-page]").forEach(b => (+b.dataset.page === p ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
+  $("prev").disabled = p === 1;
+  $("next").disabled = p === 3;
+  try { history.replaceState(null, "", "#" + p); } catch (e) { /* adresse non modifiable dans certains cadres */ }
+}
+
+document.querySelectorAll(".nav [data-page]").forEach(b => b.addEventListener("click", () => go(+b.dataset.page)));
+$("prev").addEventListener("click", () => go(page - 1));
+$("next").addEventListener("click", () => go(page + 1));
+let wheelLock = 0;
+addEventListener("wheel", e => {
+  const panel = $("panel");
+  if (panel.contains(e.target) && panel.scrollHeight > panel.clientHeight) {
+    const atTop = panel.scrollTop <= 0, atEnd = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 1;
+    if ((e.deltaY > 0 && !atEnd) || (e.deltaY < 0 && !atTop)) return;
+  }
+  if (Math.abs(e.deltaY) < 20 || Date.now() < wheelLock) return;
+  wheelLock = Date.now() + 1200;
+  go(page + (e.deltaY > 0 ? 1 : -1));
+}, { passive: true });
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (["ArrowDown", "PageDown"].includes(e.key)) go(page + 1);
+  if (["ArrowUp", "PageUp"].includes(e.key)) go(page - 1);
+  if (e.key === "Escape") closeCard();
+});
+
+map.fitBounds(regionBounds, pad(1));
+go(+(location.hash.slice(1)) || 1);
+</script>

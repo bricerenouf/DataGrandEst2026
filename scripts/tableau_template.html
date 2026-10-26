@@ -1,0 +1,437 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Le Grand Est, semaine par semaine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Un élément masqué reste masqué, même si une règle lui donne un « display » */
+[hidden] { display: none !important; }
+/* Layout : petite carte des départements à gauche, grand tableau à droite.
+   Deux vues : « bande » (le temps en colonnes, une ligne par mesure) et « calendrier »
+   (une ligne par année, les semaines en colonnes). Fond noir ; chaque case va de
+   l'indigo (parmi les plus basses) au jaune orangé (parmi les plus hautes). */
+:root {
+  color-scheme: dark;
+  --bg: #0d0d10;
+  --panel: #141419;
+  --ink: #ececf1;
+  --ink-2: #8d8d9b;
+  --rule: #26262e;
+  --missing: #1d1d24;
+  --accent: #f0a33b;
+  --font: "IBM Plex Sans", "Helvetica Neue", Arial, system-ui, sans-serif;
+}
+html, body { min-height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 13px/1.45 var(--font); }
+* { box-sizing: border-box; }
+button, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.page { padding-block: 22px 28px; padding-inline: 24px; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px 30px; }
+h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.sub { margin: 4px 0 0; color: var(--ink-2); max-width: 72ch; }
+.scale { display: flex; flex-direction: column; gap: 4px; min-width: 260px; }
+.scale .bar { height: 10px; border-radius: 1px; }
+.scale .ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-2); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+.ctl { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 2px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel); padding: 4px 11px; cursor: pointer; color: var(--ink-2); }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 500; }
+select { background: var(--panel); border: 1px solid var(--rule); border-radius: 2px; padding: 3px 6px; }
+
+.layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
+.side { position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 10px; }
+#map { width: 100%; height: auto; display: block; }
+.dept { fill: var(--panel); stroke: #3a3a46; stroke-width: .8; cursor: pointer; transition: fill .15s; }
+.dept:hover, .dept.on { fill: #24242e; stroke: #fff; stroke-width: 1.4; }
+.dept.locked { fill: #2c2440; stroke: var(--accent); stroke-width: 1.6; }
+.river { fill: none; stroke: #6b45c8; stroke-opacity: .55; stroke-linecap: round; pointer-events: none; }
+.dot { fill: #c8c8d2; pointer-events: none; }
+.dot.on { fill: var(--accent); }
+.hint { color: var(--ink-2); font-size: 12px; margin: 0; }
+
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 8px; }
+.head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.head .count { color: var(--ink-2); }
+.back { border: 1px solid var(--rule); background: var(--panel); border-radius: 2px; padding: 3px 10px; cursor: pointer; }
+.back:hover { border-color: var(--accent); }
+.sort { margin-left: auto; color: var(--ink-2); display: flex; gap: 6px; align-items: center; }
+
+.table-wrap { overflow-x: auto; }
+.table { position: relative; min-width: 860px; }
+.axis, .row { display: grid; grid-template-columns: 200px var(--attrs, 0px) 1fr var(--notes, 0px); align-items: center; gap: 0 10px; }
+.axis canvas, .events canvas { height: 18px; width: 100%; display: block; }
+.events { display: grid; grid-template-columns: 200px var(--attrs, 0px) 1fr var(--notes, 0px); gap: 0 10px; margin-bottom: 4px; }
+.events .lane { position: relative; height: 34px; }
+.ev { position: absolute; height: 34px; border-left: 1px solid rgba(240, 163, 59, .7); }
+.ev span { position: absolute; left: 4px; font-size: 10.5px; line-height: 1.2; color: var(--ink-2); white-space: nowrap; }
+.ev .bracket { position: absolute; left: 0; height: 2px; background: rgba(240, 163, 59, .7); }
+.row { margin-bottom: 3px; }
+.row .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .lbl small { color: var(--ink-2); }
+.row canvas { width: 100%; display: block; }
+.row.big canvas { height: 34px; }
+.row.small canvas { height: 15px; }
+.row.cal canvas { height: 14px; }
+.row.cal { margin-bottom: 2px; }
+.row.small .lbl, .row.cal .lbl { font-size: 12px; }
+.row.small:hover .lbl { color: var(--accent); }
+.row .note { font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .note b { color: var(--accent); font-weight: 500; }
+.sep { height: 1px; background: var(--rule); margin: 8px 0; }
+.attrs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.attrs span { height: 6px; background: var(--rule); position: relative; }
+.attrs span i { position: absolute; inset: 0 auto 0 0; background: var(--ink-2); }
+.attr-head { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: 10px; color: var(--ink-2); text-align: center; }
+.cursor { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; opacity: .8; pointer-events: none; }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: #f2f2f5; color: #121216; border-radius: 2px; padding: 6px 9px; font-size: 12px; max-width: 290px; }
+.tip b { font-weight: 600; }
+.note-text { color: var(--ink-2); font-size: 12px; max-width: 92ch; margin: 0; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .side { position: static; max-width: 420px; }
+}
+</style>
+
+<div class="page">
+  <header>
+    <div>
+      <h1>Le Grand Est, semaine par semaine</h1>
+      <p class="sub">De janvier 2000 à septembre 2026 : chaque case dit si la période a été plus ou moins pluvieuse, enneigée, humide, chaude que d'habitude, et si les rivières ont coulé plus ou moins que d'habitude.</p>
+    </div>
+    <div class="scale" aria-hidden="true">
+      <div class="bar" id="scale-bar"></div>
+      <div class="ends"><span>parmi les plus basses</span><span>habituelle</span><span>parmi les plus hautes</span></div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="ctl">Vue <span class="seg" id="view">
+      <button type="button" data-v="band" aria-pressed="true">Bande</button><button type="button" data-v="cal" aria-pressed="false">Calendrier</button></span></div>
+    <div class="ctl" id="gran-box">Pas de temps <span class="seg" id="gran">
+      <button type="button" data-v="week" aria-pressed="true">Semaine</button><button type="button" data-v="month" aria-pressed="false">Mois</button><button type="button" data-v="year" aria-pressed="false">Année</button></span></div>
+    <label class="ctl" id="var-box" hidden>Mesure <select id="var"></select></label>
+  </div>
+
+  <div class="layout">
+    <aside class="side">
+      <svg id="map" role="img" aria-label="Carte des départements : survolez pour filtrer, cliquez pour fixer le département"></svg>
+      <p class="hint" id="hint"></p>
+    </aside>
+    <section>
+      <div class="head">
+        <button class="back" type="button" id="back" hidden>← Toute la région</button>
+        <h2 id="title">Toute la région</h2>
+        <span class="count" id="count"></span>
+        <label class="sort" id="sort-box" hidden>Trier les cours d'eau par
+          <select id="sort">
+            <option value="t">temps de retour à la normale</option>
+            <option value="km">longueur du réseau en amont</option>
+            <option value="vk">virages par km</option>
+            <option value="aff">nombre d'affluents</option>
+            <option value="n">nom</option>
+          </select>
+        </label>
+      </div>
+      <div class="table-wrap"><div class="table" id="table"></div></div>
+      <p class="note-text" id="note"></p>
+    </section>
+  </div>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+
+// ---------- Outils ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const nf0 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+const MISSING = 255, N = DATA.dates[1], START = new Date(DATA.dates[0]);
+const weekDate = i => new Date(START.getTime() + i * 6048e5);
+const unpack = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const decode = arr => { const out = []; let x = 0, y = 0; for (let i = 0; i < arr.length; i += 2) { x += arr[i]; y += arr[i + 1]; out.push([x / DATA.q, y / DATA.q]); } return out; };
+const polygon = rings => {
+  const f = { type: "Feature", geometry: { type: "MultiPolygon", coordinates: rings.map(r => [r]) } };
+  f.geometry.coordinates.forEach(p => { if (d3.geoArea({ type: "Polygon", coordinates: p }) > 2 * Math.PI) p[0].reverse(); });
+  return f;
+};
+const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+
+// Dégradé de la référence : indigo -> violet -> magenta -> corail -> orange.
+// Les moyennes (mois, année) s'écartent moins de 50 : l'échelle est resserrée pour rester lisible.
+const DOMAIN = { week: [0, 100], month: [12, 88], year: [28, 72] };
+const colorFor = gran => { const [a, b] = DOMAIN[gran]; return v => d3.interpolatePlasma(0.06 + 0.82 * Math.max(0, Math.min(1, (v - a) / (b - a)))); };
+const MISSING_COLOR = getComputedStyle(document.documentElement).getPropertyValue("--missing").trim();
+$("scale-bar").style.background = `linear-gradient(90deg, ${d3.range(0, 101, 10).map(v => colorFor("week")(v)).join(",")})`;
+
+const VARS = DATA.vars.map(([col, label]) => ({ col, label }));
+const BAND_FINE = ["pluie", "humidite", "debit"];   // à la semaine et au mois ; neige et température : année et calendrier
+const regionRows = Object.fromEntries(VARS.map(v => [v.col, unpack(DATA.region[v.col])]));
+const depts = DATA.depts.map(d => ({ ...d, feature: polygon(d.g.map(decode)), rows: Object.fromEntries(VARS.map(v => [v.col, unpack(d.rows[v.col])])) }));
+const stations = DATA.stations.map(s => ({ ...s, qv: unpack(s.q) }));
+const events = DATA.events.map(([a, b, label]) => ({ a: new Date(a), b: new Date(b), label }));
+$("var").innerHTML = VARS.map(v => `<option value="${v.col}"${v.col === "debit" ? " selected" : ""}>${v.label}</option>`).join("");
+
+// ---------- Regroupement par mois ou par année ----------
+// Chaque semaine est rattachée au mois de son jeudi, et à son année ISO (colonne semaine).
+const monthOf = i => { const d = new Date(weekDate(i).getTime() + 3 * 864e5); return d.getFullYear() * 12 + d.getMonth(); };
+const BUCKETS = {};
+function buckets(gran) {
+  if (BUCKETS[gran]) return BUCKETS[gran];
+  const key = gran === "week" ? (i => i) : gran === "month" ? monthOf : (i => DATA.years[i]);
+  const list = [];
+  for (let i = 0; i < N; i++) {
+    const k = key(i);
+    if (!list.length || list[list.length - 1].k !== k) list.push({ k, first: i, weeks: [] });
+    list[list.length - 1].weeks.push(i);
+  }
+  return (BUCKETS[gran] = list);
+}
+function aggregate(values, gran) {
+  if (gran === "week") return Array.from(values);
+  return buckets(gran).map(b => {
+    const v = b.weeks.map(i => values[i]).filter(x => x !== MISSING);
+    return v.length >= b.weeks.length / 2 ? v.reduce((s, x) => s + x, 0) / v.length : MISSING;
+  });
+}
+function bucketLabel(gran, j) {
+  const b = buckets(gran)[j];
+  if (gran === "week") return "semaine du " + weekDate(b.first).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  if (gran === "month") return `${MONTHS[b.k % 12]} ${Math.floor(b.k / 12)}`;
+  return `année ${b.k}`;
+}
+
+// ---------- Dessin ----------
+const table = $("table");
+let rowsDrawn = [];
+const state = { view: "band", gran: "week", variable: "debit", mode: "region", dept: null };
+
+function drawCells(canvas, values, color, n) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height, gap = n < 400 ? Math.max(1, dpr * 0.5) : 0;
+  for (let i = 0; i < n; i++) {
+    const x0 = Math.floor(i * W / n), x1 = Math.floor((i + 1) * W / n);
+    const v = values[i];
+    ctx.fillStyle = v === undefined || v === MISSING ? MISSING_COLOR : color(v);
+    ctx.fillRect(x0, 0, Math.max(1, x1 - x0 - gap), H);
+  }
+}
+function drawYearAxis(canvas, gran) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr);
+  ctx.fillStyle = "#8d8d9b"; ctx.font = "11px " + getComputedStyle(document.body).fontFamily; ctx.textBaseline = "top";
+  const list = buckets(gran), n = list.length, every = w < 700 ? 5 : w < 1100 ? 2 : 1;
+  let lastYear = null;
+  list.forEach((b, j) => {
+    const y = DATA.years[b.first];
+    if (y === lastYear) return;
+    lastYear = y;
+    const x = j / n * w;
+    ctx.fillRect(x, 12, 1, 6);
+    if ((y - 2000) % every === 0) ctx.fillText(String(y), x + 3, 0);
+  });
+}
+function drawWeekAxis(canvas) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr);
+  ctx.fillStyle = "#8d8d9b"; ctx.font = "11px " + getComputedStyle(document.body).fontFamily; ctx.textBaseline = "top";
+  // Repère approximatif du début de chaque mois dans l'année (semaines ISO)
+  MONTHS.forEach((m, k) => { const x = (k * 52 / 12) / 53 * w; ctx.fillRect(x, 12, 1, 6); ctx.fillText(m, x + 3, 0); });
+}
+
+function addRow(cls, labelHtml, values, label, opts = {}) {
+  const row = document.createElement("div");
+  row.className = "row " + cls;
+  row.innerHTML = `<span class="lbl" title="${esc(label)}">${labelHtml}</span><span>${opts.attrs || ""}</span><canvas></canvas><span class="note">${opts.note || ""}</span>`;
+  table.appendChild(row);
+  rowsDrawn.push({ canvas: row.querySelector("canvas"), values, label, ...opts });
+  if (opts.station) {
+    row.addEventListener("mouseenter", () => dots.classed("on", d => d === opts.station));
+    row.addEventListener("mouseleave", () => dots.classed("on", false));
+  }
+}
+
+function render() {
+  table.innerHTML = "";
+  rowsDrawn = [];
+  if (state.view === "cal") renderCalendar(); else renderBand();
+  const cursor = document.createElement("div"); cursor.className = "cursor"; cursor.hidden = true; cursor.id = "cursor";
+  table.appendChild(cursor);
+}
+
+// Vue bande : le temps en colonnes, une ligne par mesure (et par station au clic)
+function renderBand() {
+  const gran = state.gran, list = buckets(gran), n = list.length, color = colorFor(gran);
+  const stationMode = state.mode === "stations";
+  table.style.setProperty("--attrs", stationMode ? "150px" : "0px");
+  table.style.setProperty("--notes", "0px");
+
+  // Repères des épisodes, au-dessus de l'axe
+  const evRow = document.createElement("div");
+  evRow.className = "events";
+  evRow.innerHTML = `<span></span><span></span><div class="lane" id="lane"></div><span></span>`;
+  table.appendChild(evRow);
+  const axis = document.createElement("div");
+  axis.className = "axis";
+  axis.innerHTML = `<span></span><span>${stationMode ? '<div class="attr-head"><span>réseau</span><span>virages</span><span>affluents</span></div>' : ""}</span><canvas></canvas><span></span>`;
+  table.appendChild(axis);
+
+  const src = state.dept ? state.dept.rows : regionRows;
+  const shown = VARS.filter(v => (gran === "year" || BAND_FINE.includes(v.col)) && !(stationMode && v.col === "debit"));
+  shown.forEach(v => addRow("big", `${v.label}${state.dept ? ` <small>· ${esc(state.dept.nom)}</small>` : ""}`, aggregate(src[v.col], gran), v.label, { color, gran }));
+
+  if (stationMode) {
+    const sep = document.createElement("div"); sep.className = "sep"; table.appendChild(sep);
+    const key = $("sort").value;
+    const list2 = stations.filter(s => s.dept === state.dept.code).sort((a, b) =>
+      key === "n" ? a.n.localeCompare(b.n, "fr") : (b[key] ?? -1) - (a[key] ?? -1));
+    const max = { km: Math.log10(1 + d3.max(list2, s => s.km || 0)), vk: d3.max(list2, s => s.vk || 0), aff: Math.log10(1 + d3.max(list2, s => s.aff || 0)) };
+    list2.forEach(s => {
+      const bar = (v, m) => `<span><i style="width:${v === null || !m ? 0 : (100 * v / m).toFixed(0)}%"></i></span>`;
+      const attrs = `<div class="attrs" title="Réseau en amont : ${s.km === null ? "—" : nf0.format(s.km) + " km"} · ${s.vk === null ? "—" : nf1.format(s.vk) + " virages/km"} · ${s.aff === null ? "—" : s.aff + " affluents"}">${bar(s.km === null ? null : Math.log10(1 + s.km), max.km)}${bar(s.vk, max.vk)}${bar(s.aff === null ? null : Math.log10(1 + s.aff), max.aff)}</div>`;
+      addRow("small", esc(s.n), aggregate(s.qv, gran), `Débit · ${s.n}`, { attrs, station: s, color, gran });
+    });
+  }
+  drawYearAxis(axis.querySelector("canvas"), gran);
+  rowsDrawn.forEach(r => drawCells(r.canvas, r.values, r.color, n));
+
+  // Placement des repères : proportion de la période couverte
+  const lane = $("lane"), t0 = START.getTime(), t1 = weekDate(N).getTime();
+  events.forEach((e, i) => {
+    const left = (e.a - t0) / (t1 - t0) * 100, width = Math.max(0.3, (Math.min(e.b, weekDate(N)) - e.a) / (t1 - t0) * 100);
+    const el = document.createElement("div");
+    el.className = "ev";
+    el.style.left = left + "%";
+    const top = i % 2 ? 2 : 17;
+    el.innerHTML = `<div class="bracket" style="top:${top + 13}px;width:${width}%"></div><span style="top:${top}px">${esc(e.label)}</span>`;
+    el.style.width = "0";
+    lane.appendChild(el);
+    el.querySelector(".bracket").style.width = (width / 100 * lane.clientWidth) + "px";
+  });
+}
+
+// Vue calendrier : une ligne par année, les 53 semaines en colonnes, une mesure au choix
+function renderCalendar() {
+  table.style.setProperty("--attrs", "0px");
+  table.style.setProperty("--notes", "240px");
+  const color = colorFor("week"), src = state.dept ? state.dept.rows : regionRows, values = src[state.variable];
+  const axis = document.createElement("div");
+  axis.className = "axis";
+  axis.innerHTML = `<span></span><span></span><canvas></canvas><span></span>`;
+  table.appendChild(axis);
+  const years = [...new Set(DATA.years)];
+  years.forEach(y => {
+    const cells = new Array(53).fill(MISSING), idx = new Array(53).fill(null);
+    for (let i = 0; i < N; i++) if (DATA.years[i] === y) { cells[DATA.woys[i] - 1] = values[i]; idx[DATA.woys[i] - 1] = i; }
+    const ev = events.find(e => e.a.getFullYear() <= y && e.b.getFullYear() >= y);
+    const note = ev ? `<b>●</b> ${esc(ev.label)}` : "";
+    addRow("cal", String(y), cells, `${VARS.find(v => v.col === state.variable).label}${state.dept ? " · " + state.dept.nom : ""}`, { color, cal: idx, year: y, note });
+  });
+  drawWeekAxis(axis.querySelector("canvas"));
+  rowsDrawn.forEach(r => drawCells(r.canvas, r.values, r.color, 53));
+}
+
+// ---------- Survol du tableau ----------
+table.addEventListener("mousemove", e => {
+  const tip = $("tip"), cursor = $("cursor");
+  const r = rowsDrawn.find(r => { const b = r.canvas.getBoundingClientRect(); return e.clientY >= b.top - 2 && e.clientY <= b.bottom + 2 && e.clientX >= b.left && e.clientX <= b.right; });
+  const any = r || rowsDrawn.find(r => { const b = r.canvas.getBoundingClientRect(); return e.clientX >= b.left && e.clientX <= b.right; });
+  if (!any) { tip.hidden = true; if (cursor) cursor.hidden = true; return; }
+  const b = any.canvas.getBoundingClientRect(), tb = table.getBoundingClientRect();
+  if (cursor) { cursor.hidden = false; cursor.style.left = (e.clientX - tb.left) + "px"; }
+  if (!r) { tip.hidden = true; return; }
+  const n = r.values.length, j = Math.min(n - 1, Math.max(0, Math.floor((e.clientX - b.left) / b.width * n)));
+  const v = r.values[j];
+  let when;
+  if (r.cal) when = r.cal[j] === null ? `semaine ${j + 1} de ${r.year}` : bucketLabel("week", r.cal[j]);
+  else when = bucketLabel(r.gran, j);
+  let what;
+  if (v === MISSING || v === undefined) what = "pas de mesure";
+  else if (r.gran === "week" || r.cal) what = v >= 50 ? `plus haute que ${Math.round(v)} % des mêmes semaines depuis 2000` : `plus basse que ${Math.round(100 - v)} % des mêmes semaines depuis 2000`;
+  else what = `rang moyen ${nf0.format(v)} sur 100 (50 = habituel)`;
+  tip.innerHTML = `<b>${esc(r.label)}</b><br>${when}<br>${what}`;
+  tip.hidden = false;
+  tip.style.left = Math.min(innerWidth - 300, e.clientX + 14) + "px";
+  tip.style.top = (e.clientY + 14) + "px";
+});
+table.addEventListener("mouseleave", () => { $("tip").hidden = true; const c = $("cursor"); if (c) c.hidden = true; });
+
+// ---------- Carte ----------
+const svg = d3.select("#map"), MW = 280, MH = 310;
+svg.attr("viewBox", `0 0 ${MW} ${MH}`);
+const outline = polygon(DATA.outline.map(decode));
+const projection = d3.geoConicConformal().parallels([47, 50]).rotate([-5.5, 0]).fitExtent([[6, 6], [MW - 6, MH - 6]], outline);
+const path = d3.geoPath(projection);
+const shapes = svg.append("g").selectAll("path").data(depts).join("path").attr("class", "dept").attr("d", d => path(d.feature));
+const maxK = d3.max(DATA.background, b => b.k);
+svg.append("g").selectAll("path").data(DATA.background).join("path").attr("class", "river")
+  .attr("d", b => path({ type: "MultiLineString", coordinates: b.g.map(decode) }))
+  .attr("stroke-width", b => 0.4 + 1.6 * Math.sqrt(b.k / maxK));
+const dots = svg.append("g").selectAll("circle").data(stations).join("circle").attr("class", "dot")
+  .attr("r", 1.6).attr("transform", s => `translate(${projection([s.lon, s.lat])})`);
+
+function syncUi() {
+  const locked = state.mode === "stations" || state.mode === "locked";
+  $("title").textContent = state.dept ? state.dept.nom : "Toute la région";
+  const n = state.dept ? state.dept.n : stations.length;
+  $("count").textContent = `${n} stations${state.mode === "stations" ? " · débit de chaque cours d'eau" : ""}`;
+  $("back").hidden = !locked;
+  $("sort-box").hidden = state.mode !== "stations";
+  $("gran-box").hidden = state.view !== "band";
+  $("var-box").hidden = state.view !== "cal";
+  document.querySelectorAll("#view button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === state.view));
+  document.querySelectorAll("#gran button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === state.gran));
+  shapes.classed("locked", d => locked && d === state.dept);
+  $("hint").textContent = state.view === "band"
+    ? "Survolez un département pour filtrer le tableau. Cliquez pour afficher le débit de chacun de ses cours d'eau."
+    : "Survolez un département pour filtrer le calendrier. Cliquez pour le fixer.";
+  $("note").innerHTML = state.view === "band"
+    ? `Couleur : rang de la période parmi les mêmes périodes de 2000-2026, à chaque station, puis moyenne des stations. Le cycle des saisons est ainsi retiré.${state.gran === "week" ? "" : " Au mois et à l'année, l'échelle de couleur est resserrée : les moyennes s'éloignent moins de la normale."} Neige et température : pas de temps « année » ou vue calendrier. Cases grises : pas de mesure. Données : <code>donnees.csv</code> (266 stations).`
+    : `Une ligne par année, les semaines de janvier à décembre en colonnes. Couleur : rang de la semaine parmi les mêmes semaines de 2000-2026. Les années se lisent de haut en bas : une couleur qui gagne les dernières lignes trahit une tendance. Données : <code>donnees.csv</code> (266 stations).`;
+}
+function update() { syncUi(); render(); }
+
+shapes.on("mouseenter", (e, d) => {
+  if (state.mode !== "region" && state.mode !== "hover") return;
+  Object.assign(state, { mode: "hover", dept: d });
+  shapes.classed("on", o => o === d);
+  update();
+}).on("click", (e, d) => {
+  const same = state.dept === d && (state.mode === "stations" || state.mode === "locked");
+  Object.assign(state, same ? { mode: "region", dept: null } : { mode: state.view === "band" ? "stations" : "locked", dept: d });
+  shapes.classed("on", false);
+  update();
+});
+svg.on("mouseleave", () => {
+  if (state.mode !== "hover") return;
+  Object.assign(state, { mode: "region", dept: null });
+  shapes.classed("on", false);
+  update();
+});
+$("back").addEventListener("click", () => { Object.assign(state, { mode: "region", dept: null }); update(); });
+$("sort").addEventListener("change", render);
+$("var").addEventListener("change", e => { state.variable = e.target.value; render(); });
+document.querySelectorAll("#gran button").forEach(b => b.addEventListener("click", () => { state.gran = b.dataset.v; update(); }));
+document.querySelectorAll("#view button").forEach(b => b.addEventListener("click", () => {
+  state.view = b.dataset.v;
+  if (state.mode === "stations" && state.view === "cal") state.mode = "locked";
+  if (state.mode === "locked" && state.view === "band") state.mode = "stations";
+  update();
+}));
+
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+update();
+</script>

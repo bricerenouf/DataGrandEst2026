@@ -1,0 +1,1405 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>L'eau des rivières, l'eau de là-haut ?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Un élément masqué reste masqué, même si une règle lui donne un « display » */
+[hidden] { display: none !important; }
+/* Une seule carte, fixée en fond d'écran ; le récit défile devant elle en calques.
+   Pages 1 et 2 : la carte reste immobile (région à gauche, calque à droite).
+   Puis cinq étapes : la carte zoome sur un cours d'eau, un calque s'affiche à un endroit
+   différent à chaque fois. Fond noir, rivières en bleu, tableau de l'indigo au jaune orangé. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0b0e;
+  --land: #111116;
+  --panel: rgba(14, 14, 19, .82);
+  --panel-solid: #15151b;
+  --ink: #ededf2;
+  --ink-2: #9a9aa8;
+  --rule: rgba(255, 255, 255, .1);
+  --missing: #1d1d24;
+  --accent: #f0a33b;
+  --river-1: #2f5a85; --river-2: #4a8cc4; --river-3: #74b8ec;
+  --flow: rgba(205, 238, 255, .95);
+  --font: "IBM Plex Sans", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --gap: max(22px, 3vw);
+}
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 14px/1.55 var(--font); }
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* ---- La carte de fond ---- */
+#bg { position: fixed; inset: 0; z-index: 0; }
+#bg > svg, #bg > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#bg-back, #bg-mid, #flow, #static { pointer-events: none; }
+.dept-line { fill: none; stroke: #34343f; stroke-width: .7; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
+.dept-hit { fill: transparent; stroke: none; cursor: pointer; }
+.dept-dim { fill: rgba(6, 6, 9, .62); }
+.dept-on { fill: none; stroke: #fff; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.case-dim { fill: rgba(6, 6, 9, .5); }
+.river-on { fill: none; stroke: var(--river-3); stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.river-hit { fill: none; stroke: transparent; stroke-width: 12; stroke-linecap: round; cursor: pointer; pointer-events: stroke; vector-effect: non-scaling-stroke; }
+.river-hit.passive { cursor: default; }
+#bg-front.explore .river-hit { stroke-width: 6; pointer-events: none; }
+#bg-front.explore.has-dept .river-hit.in-dept { pointer-events: stroke; }
+.river-hover { fill: none; stroke: #cfeaff; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.label-dept { font-size: 12px; letter-spacing: .28em; text-transform: uppercase; fill: #fff; fill-opacity: .9; text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; pointer-events: none; }
+.city-dot { fill: #d9d9e0; stroke: var(--bg); stroke-width: 1; pointer-events: none; }
+.city { font-size: 12px; font-weight: 500; fill: #e6e6ec; paint-order: stroke; stroke: var(--bg); stroke-width: 3.5px; stroke-opacity: .85; pointer-events: none; }
+.st-dot { fill: #bfc0cc; fill-opacity: .7; pointer-events: none; }
+.st-hover-ring { fill: none; stroke: var(--accent); stroke-width: 2; pointer-events: none; }
+.st-on { fill: var(--accent); stroke: var(--bg); stroke-width: 1; pointer-events: none; }
+.case-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; pointer-events: none; }
+.case-name { font-size: 14px; font-weight: 600; fill: #fff; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; pointer-events: none; }
+.maptip, .tip { position: fixed; z-index: 30; pointer-events: none; background: #f2f2f5; color: #121216; border-radius: 2px; padding: 5px 9px; font-size: 12px; max-width: 300px; }
+.tip b { font-weight: 600; }
+
+/* ---- Le récit, en calques devant la carte ---- */
+main { position: relative; z-index: 1; pointer-events: none; }
+/* Voiles : un flou comme celui des cadres de texte, posé sur une partie de l'écran */
+#veils { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.veil { position: absolute; top: 0; bottom: 0; left: 0; width: 0; opacity: 0; visibility: hidden; will-change: opacity;
+  background: rgba(11, 11, 15, .55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+/* Bord adouci du côté de la carte */
+.veil.fade-l { -webkit-mask-image: linear-gradient(to right, transparent, #000 64px); mask-image: linear-gradient(to right, transparent, #000 64px); }
+.veil.fade-r { -webkit-mask-image: linear-gradient(to left, transparent, #000 64px); mask-image: linear-gradient(to left, transparent, #000 64px); }
+main section { position: relative; }
+.layer { pointer-events: auto; background: var(--panel); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 0; border-radius: 4px; padding: 20px 22px; }   /* pas de contour : le fond suffit */
+.right { position: absolute; right: var(--gap); width: min(46vw, 700px); }
+
+#p1 { height: 100vh; height: 100svh; }
+#p1 .intro { position: absolute; right: var(--gap); top: 50%; transform: translateY(-50%); width: min(40vw, 560px); pointer-events: auto; }
+.kicker { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; line-height: 1.02; letter-spacing: -.02em; text-wrap: balance; }
+/* Page 1 : fond plus léger, on devine la carte (floutée) derrière le texte */
+#p1 .intro { padding: 28px 30px; background: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* le fond flou est un voile */
+#p1 .intro h1, #p1 .intro p { text-shadow: 0 1px 8px rgba(0, 0, 0, .6); }
+#p1 .intro p { margin: 0 0 12px; color: #d2d2db; font-size: 16px; max-width: 46ch; }
+.hint { color: var(--ink-2); font-size: 12.5px; }
+.cta { display: inline-flex; align-items: center; gap: 10px; margin-top: 12px; border: 1px solid var(--accent); background: none; color: var(--accent);
+  border-radius: 999px; padding: 10px 22px; cursor: pointer; font-weight: 500; font-size: 15px; transition: background .2s, color .2s; }
+.cta:hover { background: var(--accent); color: var(--bg); }
+.cta svg { width: 18px; height: 18px; animation: nudge 2.2s ease-in-out infinite; }
+@keyframes nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .cta svg { animation: none; } }
+
+/* Vue d'ensemble : le mode d'emploi et les chiffres à gauche, la région entière à droite */
+/* Page 2 : plus haute que l'écran, son contenu reste en place pendant 60 % d'écran de défilement */
+#vue { height: 160vh; height: 160svh; }
+.vue-sticky { position: sticky; top: 0; height: 100vh; height: 100svh; }
+#vue .vue-col { position: absolute; left: var(--gap); top: 50%; transform: translateY(-50%); width: min(36vw, 480px); max-height: calc(100% - 48px); overflow-y: auto; pointer-events: auto; }
+#vue .vue-panel { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; padding-left: 0; padding-right: 0; }   /* transparent */
+#vue .vue-panel p { margin: 0 0 10px; color: #d2d2db; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+#vue .vue-panel p:last-child { margin-bottom: 0; }
+/* Chiffres : des tuiles de couleur sous le cadre ; au survol, ce qu'elles comptent s'allume sur la carte */
+.stats { list-style: none; margin: 34px 0 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 30px; }
+.stats li { display: flex; flex-direction: column; align-items: center; cursor: default; outline: none; transition: opacity .2s; }
+.stats b { font-size: clamp(40px, 4.2vw, 60px); font-weight: 700; line-height: .95; letter-spacing: -.02em; color: var(--c); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats span { margin-top: 4px; padding: 2px 9px 3px; background: #14574f; color: #fff; font-size: 14px; font-weight: 600; line-height: 1.3; border-radius: 2px; text-align: center; }
+/* Au survol d'un chiffre, les autres s'estompent */
+.stats:hover li:not(:hover), .stats:focus-within li:not(:focus) { opacity: .4; }
+/* Surbrillance de tous les cours d'eau : l'image des rivières s'éclaire, avec un halo de la couleur de la tuile */
+#static.hl-all { filter: brightness(2.3) drop-shadow(0 0 2px var(--hl)); }
+.river-vue { fill: none; stroke: var(--hl); stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.st-vue { fill: var(--hl); stroke: var(--bg); stroke-width: 1; pointer-events: none; }
+#vue .vue-next { position: absolute; right: calc(var(--gap) + 8px); bottom: calc(28px + env(safe-area-inset-bottom, 0px)); pointer-events: auto; }
+@media (max-width: 820px) { #vue .vue-col { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; transform: none; max-height: 56vh; } }
+
+/* Page 3 : plus haute que l'écran, son contenu reste en place pendant 60 % d'écran de défilement */
+#p2 { height: 160vh; height: 160svh; }
+.p2-sticky { position: sticky; top: 0; height: 100vh; height: 100svh; }
+#p2 .right { position: absolute; top: 4vh; right: var(--gap); max-height: calc(100% - 4vh - 112px); overflow-y: auto; overscroll-behavior: contain;
+  background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* pas de cadre : le texte et le tableau sont posés sur la page */
+/* Page 4 : ce que révèlent les données, la carte en fond et un grand cadre à onglets */
+/* Page 4 : les tendances défilent sous le titre, qui reste en haut jusqu'à la dernière ; tout est centré */
+#obs { position: relative; }
+.obs-flow { width: min(760px, calc(100vw - 2 * var(--gap) - 40px)); margin: 0 auto; padding-bottom: 45vh; pointer-events: auto; text-align: center; }
+/* Titre collé en haut : un dégradé sombre dessous, pour que les tendances passent derrière */
+.obs-head { position: sticky; top: 0; z-index: 2; padding: 5vh 0 34px;   /* transparent */
+  transition: transform .6s ease, opacity .6s ease; }
+#obs.done .obs-head { transform: translateY(-110%); opacity: 0; pointer-events: none; }
+#obs h2 { margin: 0 0 8px; font-size: clamp(26px, 3vw, 40px); font-weight: 600; letter-spacing: -.01em; }
+.obs-intro { margin: 0 auto; color: #d2d2db; max-width: 62ch; font-size: 15.5px; }
+/* Une tendance : le chiffre, puis le texte, puis le tableau */
+.obs-item { min-height: 80vh; padding: 6vh 0; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
+/* La dernière tendance n'a pas de vide dessous : le texte vers les cinq cas la suit de près */
+.obs-item:last-child { min-height: 0; padding-bottom: 0; margin-top: 6vh; }
+.obs-item .big { margin: 0; font-size: clamp(48px, 5.4vw, 76px); font-weight: 700; line-height: 1; letter-spacing: -.02em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.obs-item h3 { margin: 10px 0 8px; font-size: 22px; font-weight: 600; }
+.obs-item p { margin: 0 auto 10px; color: #d2d2db; max-width: 64ch; }
+.obs-cap { margin: 14px auto 8px !important; font-size: 12.5px; color: var(--ink-2) !important; }
+.obs-tbl { padding-bottom: 22px; --pb: 22px; text-align: left; }   /* place pour le nom des encadrés */
+/* Texte vers les cinq cas : juste sous la dernière tendance, il défile avec elle */
+#obs .teaser { position: static; transform: none; margin: 16vh auto 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+/* Flèche : elle monte du bas à la dernière tendance */
+#obs .obs-next { position: fixed; z-index: 2; right: calc(var(--gap) + 8px); bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  opacity: 0; pointer-events: none; transform: translateY(140%); transition: transform .6s ease, opacity .6s ease; }
+#obs.in.done .obs-next { opacity: 1; pointer-events: auto; transform: none; }
+/* Points de progression, fixes sur le côté pendant la page */
+.obs-dots { position: fixed; right: calc(var(--gap) + 20px); top: 50%; transform: translateY(-50%); z-index: 2; display: flex; flex-direction: column; gap: 10px;
+  opacity: 0; pointer-events: none; transition: opacity .3s; }
+#obs.in .obs-dots { opacity: 1; pointer-events: auto; }
+.obs-dots button { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: 1px solid var(--ink-2); background: none; cursor: pointer; transition: background .2s, border-color .2s, transform .2s; }
+.obs-dots button[aria-current="true"] { background: var(--accent); border-color: var(--accent); transform: scale(1.25); }
+@media (max-width: 820px) { .obs-dots { right: 8px; } }
+#p2 .p2-next { position: absolute; right: calc(var(--gap) + 8px); bottom: calc(28px + env(safe-area-inset-bottom, 0px)); pointer-events: auto; }
+.ex-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 4px; }
+.ex-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* Bouton rond « Désélectionner » : revient au Grand Est entier */
+.desel { flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--ink-2); background: none; color: var(--ink-2);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; transition: color .2s, border-color .2s; }
+.desel:hover { color: var(--accent); border-color: var(--accent); }
+.desel svg { width: 12px; height: 12px; }
+/* Page 1 : la carte ne se clique pas (on ne fait que la survoler et défiler) */
+#bg-front.no-click .dept-hit, #bg-front.no-click .river-hit { cursor: default; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: clamp(18px, 1.8vw, 24px); font-weight: 600; }
+.crumbs button { border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-2); font-weight: 600; }
+.crumbs button:hover { color: var(--accent); }
+.crumbs .sep { color: var(--ink-2); font-weight: 400; }
+.sub { color: var(--ink-2); margin: 0 0 8px; font-size: 13px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 2px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel-solid); padding: 4px 11px; cursor: pointer; color: var(--ink-2); }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 500; }
+.bar-scale { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-2); margin: 2px 0 8px; flex-wrap: wrap; }
+.bar-scale i { display: inline-block; width: 150px; height: 7px; border-radius: 1px; }
+.teaser { position: absolute; left: 50%; bottom: calc(34px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: max-content; max-width: min(560px, 80vw);
+  margin: 0; pointer-events: auto; text-align: center; font-size: 15px; padding: 9px 18px; border-radius: 4px; background: rgba(11, 11, 15, .55);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); text-shadow: 0 1px 8px rgba(0, 0, 0, .6); }
+.teaser b { color: var(--accent); font-weight: 600; }
+/* Flèche ronde qui rebondit (page 2 et étapes) */
+.bounce, .next-step { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--accent);
+  background: rgba(14, 14, 19, .75); border: 1.5px solid var(--accent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  animation: bounce 1.8s cubic-bezier(.28, .84, .42, 1) infinite; }
+.bounce:hover, .next-step:hover { background: var(--accent); color: var(--bg); }
+.bounce svg, .next-step svg { width: 22px; height: 22px; }
+@media (prefers-reduced-motion: reduce) { .bounce { animation: none; } }
+.go { border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 999px; padding: 7px 16px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.go:hover { background: var(--accent); color: var(--bg); }
+.foot { color: var(--ink-2); font-size: 11.5px; margin: 8px 0 0; }
+
+/* Étapes : un cours d'eau, un calque placé à un endroit différent */
+.step { height: 140vh; }
+.step .card { position: sticky; width: min(430px, 92vw); background: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* fond : un voile */
+.step .card h2, .step .card h3, .step .card p { text-shadow: 0 1px 6px rgba(0, 0, 0, .55); }
+.step.pos-lt .card { top: 6vh; margin-left: var(--gap); }
+.step.pos-rb .card { top: 20vh; margin-left: auto; margin-right: var(--gap); }
+.step.pos-lb .card { top: 34vh; margin-left: var(--gap); }
+.step.pos-rt .card { top: 6vh; margin-left: auto; margin-right: var(--gap); }
+.step.pos-lc .card { top: 20vh; margin-left: var(--gap); }
+.card .num { margin: 0 0 4px; font-size: 11.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.card h2 { margin: 0; font-size: clamp(22px, 2.2vw, 28px); font-weight: 600; letter-spacing: -.01em; }
+.card h3 { margin: 2px 0 10px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.card p { margin: 0 0 8px; }
+.hypo { color: var(--ink-2); font-size: 12.5px; border-left: 2px solid var(--accent); padding-left: 9px; }
+.hypo b { color: var(--ink); font-weight: 600; }
+.figs { display: flex; gap: 2px; margin: 10px 0 10px; }
+.figs div { flex: 1; background: rgba(255, 255, 255, .05); padding: 7px 9px; }
+.figs b { display: block; font-size: 18px; font-weight: 600; line-height: 1.1; color: var(--accent); font-variant-numeric: tabular-nums; }
+.figs span { font-size: 10.5px; color: var(--ink-2); line-height: 1.25; display: block; }
+/* Graphiques des cas */
+.chart svg { width: 100%; display: block; overflow: visible; }
+.chart .tick { fill: var(--ink-2); font-size: 10px; font-variant-numeric: tabular-nums; }
+.chart .grid { stroke: var(--rule); stroke-width: 1; }
+.chart .l-other { fill: none; stroke: #9a9aa8; stroke-opacity: .14; stroke-width: 1; }
+.chart .l-med { fill: none; stroke: var(--ink); stroke-opacity: .85; stroke-width: 1.5; stroke-dasharray: 5 3; }
+.chart .l-hl { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; }
+.chart .lbl, .chart .lbl-hl { fill: var(--ink-2); font-size: 11px; }
+.chart .lbl-hl { fill: var(--ink); font-weight: 600; }
+.chart .cross { stroke: var(--ink-2); stroke-width: 1; }
+.chart .dot-hl { fill: var(--accent); stroke: var(--bg); stroke-width: 2; }
+.chart .dot-med { fill: var(--ink-2); stroke: var(--bg); stroke-width: 2; }
+.chart .pt { fill: var(--accent); stroke: var(--bg); stroke-width: 1.5; }
+.chart .pt-off { fill: var(--ink-2); }
+.chart .pt.on { fill: var(--ink); r: 6; }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .trend { stroke: var(--accent); stroke-width: 1.5; stroke-opacity: .7; }
+.chart .trend-off { stroke: var(--ink-2); stroke-width: 1.5; stroke-opacity: .7; stroke-dasharray: 4 3; }
+.chart .cap { margin: 6px 0 0; font-size: 11px; line-height: 1.4; color: var(--ink-2); }
+/* Légende des stations du cours d'eau choisi */
+.st-legend { display: flex; align-items: center; gap: 7px; margin: 6px 0 2px; font-size: 12px; color: var(--ink-2); }
+.st-legend i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+/* Flèche pour passer au cours d'eau suivant : un petit cercle qui rebondit, du côté opposé au calque */
+.next-step { position: fixed; z-index: 3; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
+.next-step.side-r { right: calc(var(--gap) + 8px); }
+.next-step.side-l { left: calc(var(--gap) + 8px); }
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-12px); } 50% { transform: translateY(0); } 62% { transform: translateY(-5px); } 72% { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .next-step { animation: none; } }
+@media (max-width: 820px) { .next-step { top: calc(14px + env(safe-area-inset-top, 0px)); bottom: auto; } }
+#outro { min-height: 100vh; padding: 8vh 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+#outro .layer { max-width: 680px; margin: 0 var(--gap); background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* transparent : le fond flou suffit */
+#outro p { color: #d2d2db; }
+#outro h3 { margin: 18px 0 6px; font-size: 16px; font-weight: 600; color: var(--accent); }
+#outro .more { margin: 0 0 12px; padding-left: 20px; color: #d2d2db; }
+#outro .more li { margin-bottom: 5px; }
+#outro h2 { margin: 0 0 8px; font-size: clamp(22px, 2.4vw, 30px); font-weight: 600; }
+
+/* ---- Tableaux ---- */
+.tbl { position: relative; --lbl: 130px; }   /* --lbl : largeur de la colonne des noms (+ l'espace) */
+.card .tbl { --lbl: 102px; }
+/* Tableau figé : encadré sur une période, son nom dessous */
+.tbl .mark { position: absolute; left: calc(var(--lbl) + (100% - var(--lbl)) * var(--a)); width: calc((100% - var(--lbl)) * var(--w));
+  min-width: 3px; bottom: calc(var(--pb, 0px) - 3px); border: 1.5px solid #fff; border-radius: 2px; pointer-events: none; }
+.tbl .mark span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 5px; font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap; }
+.tbl .row, .tbl .axis, .tbl .events { display: grid; grid-template-columns: 120px 1fr; gap: 0 10px; align-items: center; }
+.card .tbl .row, .card .tbl .axis { grid-template-columns: 92px 1fr; }
+.tbl .row { margin-bottom: 3px; }
+.tbl .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
+.tbl .lbl small { color: var(--ink-2); }
+.tbl canvas { width: 100%; display: block; }
+.tbl .row.big canvas { height: 28px; }
+.tbl .row.mid canvas { height: 16px; }
+.tbl .axis canvas { height: 16px; }
+.tbl .lane { position: relative; height: 30px; }
+.ev { position: absolute; top: 0; height: 30px; border-left: 1px solid rgba(240, 163, 59, .7); }
+.ev span { position: absolute; left: 4px; font-size: 10px; line-height: 1.2; color: var(--ink-2); white-space: nowrap; }
+.ev i { position: absolute; left: 0; height: 2px; background: rgba(240, 163, 59, .7); }
+.cursor { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; opacity: .8; pointer-events: none; }
+.empty { color: var(--ink-2); border: 1px dashed var(--rule); padding: 14px; }
+.ctrls { display: flex; flex-wrap: wrap; gap: 6px; }
+.tbl .row .lbl { padding-left: calc(var(--depth, 0) * 14px); }
+.tbl .slot { display: inline-block; width: 22px; vertical-align: middle; }
+.tbl .plus { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; vertical-align: middle;
+  border: 1px solid var(--accent); border-radius: 50%; background: none; color: var(--accent); font-size: 12px; line-height: 1; cursor: pointer; }
+.tbl .plus:hover, .tbl .plus[aria-expanded="true"] { background: var(--accent); color: var(--bg); }
+.tbl .row.grp { margin: 2px 0 3px; }
+.tbl .toggle { grid-column: 1 / 2; text-align: left; border: 0; background: none; cursor: pointer; padding: 2px 0 2px calc(var(--depth, 0) * 14px);
+  color: var(--ink-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tbl .toggle:hover { color: var(--accent); }
+.tbl .toggle small { color: var(--ink-2); opacity: .8; }
+.tbl .toggle .chev { display: inline-block; width: 10px; color: var(--accent); }
+.tbl .grp-line { height: 1px; background: var(--rule); }
+.tbl .grp-box { margin: 0; padding: 0; border: 0; }   /* aucun décalage : les rectangles restent alignés */
+
+@media (max-width: 820px) {
+  #p1 .intro, .right, #p2 .right { position: absolute; left: 12px; right: 12px; width: auto; top: auto; bottom: 14px; transform: none; }
+  #p1 .intro { padding: 16px; }
+  #p2 .right { position: absolute; top: 44vh; left: 12px; right: 12px; margin: 0; max-height: calc(56vh - 110px); }
+  .teaser { max-width: calc(100vw - 90px); left: 12px; transform: none; font-size: 13px; }
+  .step .card, .step.pos-lt .card, .step.pos-rb .card, .step.pos-lb .card, .step.pos-rt .card, .step.pos-lc .card { top: 52vh; margin: 0 12px; width: auto; }
+}
+</style>
+
+<div id="bg" aria-hidden="false">
+  <svg id="bg-back" aria-hidden="true"></svg>
+  <canvas id="static" aria-hidden="true"></canvas>
+  <svg id="bg-mid" aria-hidden="true"></svg>
+  <canvas id="flow" aria-hidden="true"></canvas>
+  <svg id="bg-front" role="img" aria-label="Carte des cours d'eau du Grand Est"></svg>
+</div>
+<!-- Voiles de flou : entre la carte et les textes, leur opacité suit le défilement -->
+<div id="veils" aria-hidden="true">
+  <div class="veil fade-l" id="veil-p1"></div>
+  <div class="veil fade-l" id="veil-p2"></div>
+  <div class="veil" id="veil-obs"></div>
+  <div class="veil" id="veil-outro"></div>
+</div>
+
+<main>
+  <section id="p1">
+    <div class="intro layer">
+      <h1>L'eau des rivières, l'eau de là-haut&nbsp;?</h1>
+      <p>Depuis le début des années 2000, plus de 250 stations hydrologiques situées dans le Grand Est ont effectué de nombreuses mesures au fil des cours d'eau de la région.</p>
+      <p>Quelles influences ont la pluie, la neige ou encore les températures&nbsp;?</p>
+      <p>À travers cette visualisation, nous allons tenter de comprendre comment ont évolué ces cours d'eau pendant les 25 dernières années.</p>
+      <button class="cta" type="button" data-to="vue">C'est parti <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+  </section>
+
+  <section id="vue">
+    <!-- Contenu collé à l'écran : la page marque un temps d'arrêt avant de repartir -->
+    <div class="vue-sticky">
+      <div class="vue-col">
+        <div class="vue-panel layer">
+          <p id="vue-intro"></p>
+          <p>Pour notre analyse, on ne va pas comparer directement les valeurs mesurées, mais les comparer aux mêmes mesures des autres années. On aura donc pour chaque semaine un indicateur «&nbsp;plus bas / plus haut&nbsp;».</p>
+        </div>
+        <ul class="stats" id="stats" aria-label="Quelques chiffres"></ul>
+      </div>
+      <button class="bounce vue-next" type="button" data-to="p2" aria-label="Explorer les départements">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+  </section>
+
+  <section id="p2">
+    <!-- Contenu collé à l'écran : la page marque un temps d'arrêt avant de repartir -->
+    <div class="p2-sticky">
+      <div class="right layer">
+        <div class="ex-head">
+          <div class="ex-title">
+            <button class="desel" id="desel" type="button" title="Désélectionner" aria-label="Désélectionner : revenir au Grand Est" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <div class="crumbs" id="crumbs"></div>
+          </div>
+          <div class="ctrls">
+          <div class="seg" id="mode" aria-label="Couleur"><button type="button" data-v="rank" aria-pressed="true">Écart à la normale</button><button type="button" data-v="raw" aria-pressed="false">Valeurs mesurées</button></div>
+          <div class="seg" id="gran" aria-label="Pas de temps"><button type="button" data-v="week" aria-pressed="true">Semaine</button><button type="button" data-v="month" aria-pressed="false">Mois</button><button type="button" data-v="quarter" aria-pressed="false">Trimestre</button><button type="button" data-v="year" aria-pressed="false">Année</button></div>
+          </div>
+        </div>
+        <p class="sub" id="ex-sub"></p>
+        <div class="st-legend" id="st-legend" hidden><i></i><span id="st-legend-text"></span></div>
+        <div class="bar-scale"><span>plus bas</span><i class="scale"></i><span>plus haut</span><span id="scale-text"></span></div>
+        <div class="tbl" id="t-explore"></div>
+        <p class="foot" id="foot-text"></p>
+      </div>
+      <button class="bounce p2-next" type="button" data-to="obs" aria-label="Lire entre les lignes (d'eau)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+  </section>
+
+  <section id="obs">
+    <!-- Les quatre tendances se suivent : on les fait défiler, sur tout l'écran flouté -->
+    <div class="obs-flow">
+      <div class="obs-head">
+        <h2>Lire entre les lignes (d'eau)</h2>
+        <p class="obs-intro">Semaine après semaine, les liens entre la pluie, le sol et le débit sont difficiles à voir : chaque rivière réagit à sa façon.
+          Mais en prenant du recul, à l'échelle de la région et des années, quatre grandes tendances apparaissent.</p>
+      </div>
+      <div id="obs-items"></div>
+      <p class="teaser">Malgré la difficulté à percevoir des éléments factuels sur les cours d'eau, analysons <b>cinq d'entre eux</b> qui ont un petit truc en plus.</p>
+    </div>
+    <div class="obs-dots" id="obs-dots" aria-label="Les quatre tendances"></div>
+    <button class="bounce obs-next" type="button" data-to="c0" aria-label="Voir les cinq cours d'eau">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+  </section>
+
+  <div id="steps"></div>
+
+  <section id="outro">
+    <div class="layer">
+      <h2>Ce que l'eau nous dit, ce qu'elle tait encore</h2>
+      <p>En vingt-cinq ans, la région s'est réchauffée, la neige s'est faite rare et les années extrêmes s'enchaînent, de la sécheresse de 2022 aux pluies de 2024.
+        Pourtant, chaque rivière garde son propre rythme : certaines suivent la pluie à la semaine près, d'autres dépendent d'une craie qui retient l'eau, d'une neige qui la garde jusqu'au printemps, d'un barrage ou d'anciennes mines.</p>
+      <p>Les questions restent nombreuses. Les étés comme 2022 vont-ils devenir la règle ? Sans neige, le printemps des rivières vosgiennes va-t-il s'affaiblir ? Les années très humides suffiront-elles à rattraper les années sèches ?</p>
+      <h3>Avec plus de données, on pourrait…</h3>
+      <ul class="more">
+        <li>mesurer les nappes souterraines, pour vérifier pourquoi certaines rivières mettent des mois à revenir à la normale ;</li>
+        <li>connaître les prélèvements et les lâchers des barrages, pour séparer la part de l'homme de celle du climat ;</li>
+        <li>remonter avant 2000, pour savoir si ces tendances sont nouvelles ou si elles reviennent par cycles ;</li>
+        <li>suivre la température et la qualité de l'eau, pour voir ce que les canicules font à la vie des rivières ;</li>
+        <li>disposer de mesures chaque jour, pour saisir les crues soudaines qu'une moyenne par semaine efface.</li>
+      </ul>
+      <p class="foot">Les chiffres viennent des données (<code>donnees.csv</code>, 266 stations ; réseau BD TOPAGE). Les explications marquées d'un filet orange sont des hypothèses.</p>
+    </div>
+  </section>
+</main>
+
+<button class="next-step" id="next-step" type="button" data-to="" aria-label="Cours d'eau suivant" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+<div class="tip" id="tip" hidden></div>
+<div class="maptip" id="maptip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+
+// ================= Outils =================
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const nf0 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+const nf2 = v => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v).replace("-", "−");
+const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + nf0.format(Math.abs(v));
+const css = getComputedStyle(document.documentElement);
+const tok = k => css.getPropertyValue("--" + k).trim();
+const MISSING = 255, N = DATA.dates[1], START = new Date(DATA.dates[0]);
+const weekDate = i => new Date(START.getTime() + i * 6048e5);
+const fmtDate = s => new Date(s).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+const unpack = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const decode = arr => { const out = []; let x = 0, y = 0; for (let i = 0; i < arr.length; i += 2) { x += arr[i]; y += arr[i + 1]; out.push([x / DATA.q, y / DATA.q]); } return out; };
+const polygon = rings => {
+  const f = { type: "Feature", geometry: { type: "MultiPolygon", coordinates: rings.map(r => [r]) } };
+  f.geometry.coordinates.forEach(p => { if (d3.geoArea({ type: "Polygon", coordinates: p }) > 2 * Math.PI) p[0].reverse(); });
+  return f;
+};
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const isMobile = () => innerWidth <= 820;
+const go = id => $(id).scrollIntoView({ behavior: reduced ? "auto" : "smooth" });
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+// ================= Données =================
+const region = polygon(DATA.outline.map(decode));
+const VARLBL = Object.fromEntries(DATA.vars);
+const regionRows = Object.fromEntries(DATA.vars.map(([c]) => [c, unpack(DATA.region[c])]));
+const depts = DATA.depts.map(d => ({ ...d, feature: polygon(d.g.map(decode)), rowsU: Object.fromEntries(DATA.vars.map(([c]) => [c, unpack(d.rows[c])])) }));
+const deptByCode = Object.fromEntries(depts.map(d => [d.code, d]));
+const rivers = DATA.rivers.map((r, i) => ({ ...r, i, parts: r.g.map(decode) }));
+const riverByC = Object.fromEntries(rivers.filter(r => r.c).map(r => [r.c, r]));
+const maxAt = d3.max(rivers, r => r.at || 0);
+const stations = DATA.stations.map(s => ({ ...s, rowsU: Object.fromEntries(Object.entries(s.rows).map(([k, v]) => [k, unpack(v)])) }));
+const stationsByRiver = d3.group(stations.filter(s => s.c), s => s.c);
+const clickableRivers = rivers.filter(r => r.c && stationsByRiver.has(r.c));
+const isClickable = r => !!(r.c && stationsByRiver.has(r.c));
+const hoverRivers = rivers.filter(r => isClickable(r) || r.k >= 10);
+// Réseau d'un cours d'eau : lui, ses affluents, les affluents de ses affluents…
+const childrenOf = rivers.map(() => []);
+rivers.forEach(r => { if (r.p !== undefined) childrenOf[r.p].push(r); });
+const networkCache = new Map();
+function riverNetwork(r) {
+  if (!networkCache.has(r)) {
+    const out = [], seen = new Set([r]), stack = [r];
+    while (stack.length) { const x = stack.pop(); out.push(x); childrenOf[x.i].forEach(k => { if (!seen.has(k)) { seen.add(k); stack.push(k); } }); }
+    // Les affluents de moins de 2 km, invisibles à cette échelle, ne sont pas animés (fluidité)
+    networkCache.set(r, out.filter(x => x === r || x.k >= 2));
+  }
+  return networkCache.get(r);
+}
+const main5 = rivers.filter(r => r.main);
+const cases = DATA.cases.map((c, i) => ({ ...c, idx: i, rowsU: Object.fromEntries(DATA.vars.map(([v]) => [v, unpack(c.rows[v])])) }));
+// « Ruisseau le Rupt de Mad » -> « Le Rupt de Mad » ; « Ruisseau d'Esche » reste tel quel
+const tidyName = n => cap((n || "").replace(/^Ruisseau\s+(?=(le|la|les|l')(\s|\b))/i, ""));
+const riverName = r => tidyName(r.n);
+const riversInDept = code => rivers.filter(r => r.d && r.d.includes(code) && r.k >= 10);
+const lines = r => ({ type: "MultiLineString", coordinates: r.parts });
+
+// ================= La carte de fond =================
+// Projection de base P0 (la région tient dans tout l'écran), puis une vue T = {k, x, y} :
+// écran = k · P0(point) + (x, y). Changer de vue revient à animer T.
+const bg = { W: 0, H: 0, dpr: 1, P0: null, path0: null, T: { k: 1, x: 0, y: 0 }, flow: [], focus: null, highlight: [], mode: "region", cache: null };
+const back = d3.select("#bg-back"), mid = d3.select("#bg-mid"), front = d3.select("#bg-front");
+const cStatic = $("static"), cFlow = $("flow");
+
+function setupMap() {
+  const W = bg.W = innerWidth, H = bg.H = innerHeight, dpr = bg.dpr = Math.min(devicePixelRatio || 1, 2);
+  bg.P0 = d3.geoConicConformal().parallels([47, 50]).rotate([-5.5, 0]).fitExtent([[0, 0], [W, H]], region);
+  bg.path0 = d3.geoPath(bg.P0);
+  bg.scale = Math.min(W, H) / 800;
+  [cStatic, cFlow].forEach(c => { c.width = W * dpr; c.height = H * dpr; });
+  // Image mémorisée de toutes les rivières (2 fois la résolution), utilisée pendant les zooms
+  const SS = 2, cache = bg.cache = document.createElement("canvas");
+  cache.width = W * dpr * SS; cache.height = H * dpr * SS;
+  drawRivers(cache.getContext("2d"), { k: 1, x: 0, y: 0 }, dpr * SS);
+  // Couches SVG : un groupe « monde » qui suit la vue, des étiquettes repositionnées à part
+  [back, mid, front].forEach(s => s.attr("viewBox", `0 0 ${W} ${H}`).selectAll("*").remove());
+  const blur = Math.max(5, Math.min(W, H) / 85);
+  const defs = back.append("defs");
+  bg.haloBlur = defs.append("filter").attr("id", "halo").attr("x", "-20%").attr("y", "-20%").attr("width", "140%").attr("height", "140%").append("feGaussianBlur").attr("stdDeviation", blur);
+  const mask = defs.append("mask").attr("id", "out").attr("maskUnits", "userSpaceOnUse")
+    .attr("x", -W).attr("y", -H).attr("width", W * 3).attr("height", H * 3);   // zone d'effet : tout l'écran, et au-delà
+  mask.append("rect").attr("x", -W).attr("y", -H).attr("width", W * 3).attr("height", H * 3).attr("fill", "#fff");
+  bg.maskPath = mask.append("path").attr("fill", "#000");
+  back.append("rect").attr("width", W).attr("height", H).attr("fill", tok("bg"));
+  // Le halo et son masque sont décrits dans le repère de l'écran (le groupe masqué n'a pas de
+  // transformation) : le masque suit ainsi la vue exactement, quel que soit le zoom.
+  bg.haloWorld = back.append("g").attr("mask", "url(#out)").append("g");
+  bg.backWorld = back.append("g");
+  bg.haloWorld.append("path").attr("class", "halo").attr("fill", "none").attr("stroke", "#fff").attr("stroke-opacity", .42).attr("filter", "url(#halo)");
+  bg.backWorld.append("path").attr("class", "land").attr("fill", tok("land"));
+  bg.midWorld = mid.append("g");
+  bg.dimLayer = bg.midWorld.append("g"); bg.hlLayer = bg.midWorld.append("g"); bg.hoverLayer = bg.midWorld.append("g");
+  // Fond cliquable : en exploration, un clic hors des départements revient à la région entière
+  front.append("rect").attr("width", W).attr("height", H).attr("fill", "transparent")
+    .on("mouseenter", () => onDeptHover(null))   // la souris quitte un département vers l'extérieur
+    .on("click", () => { if (bg.mode === "region" && !clicksOff() && (sel.dept || sel.river)) selectRegion(); });
+  bg.frontWorld = front.append("g");
+  bg.frontWorld.append("g").selectAll("path").data(depts).join("path").attr("class", "dept-line").attr("d", d => bg.path0(d.feature));
+  bg.onLayer = bg.frontWorld.append("g");
+  bg.hitDepts = bg.frontWorld.append("g").selectAll("path").data(depts).join("path").attr("class", "dept-hit").attr("d", d => bg.path0(d.feature))
+    .on("mouseenter", (e, d) => onDeptHover(d)).on("click", (e, d) => onDeptClick(d));
+  const tip = $("maptip");
+  bg.hitRivers = bg.frontWorld.append("g").selectAll("path").data(hoverRivers).join("path")
+    .attr("class", r => "river-hit" + (isClickable(r) ? "" : " passive")).attr("d", r => bg.path0(lines(r)))
+    .on("mouseenter", (e, r) => onRiverHover(r))
+    .on("mousemove", (e, r) => { if (!r.n) return; tip.textContent = riverName(r); tip.hidden = false; tip.style.left = (e.clientX + 12) + "px"; tip.style.top = (e.clientY + 12) + "px"; })
+    .on("mouseleave", () => { tip.hidden = true; onRiverHover(null); })
+    .on("click", (e, r) => { tip.hidden = true; if (isClickable(r) && !clicksOff()) selectRiver(r); });
+  bg.stDots = bg.frontWorld.append("g").selectAll("circle").data(stations).join("circle").attr("class", "st-dot");
+  bg.labels = front.append("g");
+  front.on("mouseleave", () => onDeptHover(null));
+  applyView(bg.T, true);
+  setFocus(bg.focus, bg.highlight, bg.caseMark);
+}
+
+function drawRivers(ctx, T, scaleDpr) {
+  const { P0 } = bg, s = bg.scale;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.setTransform(scaleDpr * T.k, 0, 0, scaleDpr * T.k, scaleDpr * T.x, scaleDpr * T.y);
+  ctx.lineCap = ctx.lineJoin = "round";
+  const grow = Math.pow(T.k, 0.35) / T.k;   // traits un peu plus épais en zoom, sans exploser
+  const color = d3.scaleLinear().domain([0.4, 1.4, 4]).range([tok("river-1"), tok("river-2"), tok("river-3")]).clamp(true);
+  const geo = d3.geoPath(P0, ctx);
+  for (const r of rivers) {
+    if (!r.rp) {
+      const lw = r.k >= 10 ? 0.7 : 0.4;
+      ctx.globalAlpha = r.k >= 10 ? 0.8 : 0.5; ctx.lineWidth = lw * s * grow; ctx.strokeStyle = color(lw);
+      ctx.beginPath(); geo(lines(r)); ctx.stroke(); continue;
+    }
+    ctx.globalAlpha = 1;
+    const minW = 0.7, maxW = 1.2 + 3.2 * Math.sqrt(r.at / maxAt);
+    r.parts.forEach((part, j) => {
+      const [p0, p1] = r.rp[j], pts = part.map(p => P0(p)), seg = [0];
+      for (let i = 1; i < pts.length; i++) seg.push(seg[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      const tot = seg.at(-1) || 1;
+      for (let i = 1; i < pts.length; i++) {
+        const lw = minW + (maxW - minW) * (p0 + (p1 - p0) * seg[i] / tot);
+        ctx.lineWidth = lw * s * grow; ctx.strokeStyle = color(lw);
+        ctx.beginPath(); ctx.moveTo(pts[i - 1][0], pts[i - 1][1]); ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke();
+      }
+    });
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Applique une vue : groupes SVG, image des rivières (mémorisée pendant un zoom, nette au repos)
+function applyView(T, crisp) {
+  bg.T = T;
+  const tr = `translate(${T.x},${T.y}) scale(${T.k})`;
+  [bg.haloWorld, bg.backWorld, bg.midWorld, bg.frontWorld].forEach(g => g.attr("transform", tr));
+  const d = bg.path0(region);
+  bg.backWorld.select(".land").attr("d", d);
+  bg.haloWorld.select(".halo").attr("d", d).attr("stroke-width", Math.max(5, Math.min(bg.W, bg.H) / 85) * 1.3 / T.k);
+  bg.haloBlur.attr("stdDeviation", Math.max(5, Math.min(bg.W, bg.H) / 85) / T.k);
+  bg.maskPath.attr("d", d).attr("transform", tr);
+  bg.stDots.attr("r", 1.7 / T.k).attr("transform", s => `translate(${bg.P0([s.lon, s.lat])})`);
+  bg.hlLayer.selectAll("path").attr("stroke-width", 3);
+  const ctx = cStatic.getContext("2d"), dpr = bg.dpr;
+  if (crisp) drawRivers(ctx, T, dpr);
+  else {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cStatic.width, cStatic.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(bg.cache, T.x * dpr, T.y * dpr, bg.W * dpr * T.k, bg.H * dpr * T.k);
+  }
+  placeLabels();
+  paintFlow(bg.t || 0);
+}
+const toScreen = p => { const [x, y] = bg.P0(p); return [bg.T.k * x + bg.T.x, bg.T.k * y + bg.T.y]; };
+function hoverStation(s) { bg.stHover = s; placeLabels(); }
+function placeLabels() {
+  const g = bg.labels; g.selectAll("*").remove();
+  // Au survol d'un département : son nom, sans les villes ; une fois sélectionné : les villes, sans son nom
+  if (bg.mode !== "case" && !bg.focusHover) {
+    DATA.cities.forEach(c => {
+      const [x, y] = toScreen([c.lon, c.lat]), right = x < bg.W * 0.8;
+      g.append("circle").attr("class", "city-dot").attr("cx", x).attr("cy", y).attr("r", 2.6);
+      g.append("text").attr("class", "city").attr("x", x + (right ? 6 : -6)).attr("y", y + 4).attr("text-anchor", right ? "start" : "end").text(c.n);
+    });
+  }
+  if (bg.focus && bg.focusHover) {
+    const c = bg.path0.centroid(bg.focus.feature);
+    g.append("text").attr("class", "label-dept").attr("x", bg.T.k * c[0] + bg.T.x).attr("y", bg.T.k * c[1] + bg.T.y).text(bg.focus.nom);
+  }
+  if (bg.stHL && bg.stHL.length) {
+    bg.stHL.forEach(s => {
+      const [x, y] = toScreen([s.lon, s.lat]);
+      g.append("circle").attr("class", "st-on").attr("cx", x).attr("cy", y).attr("r", 3.4);
+    });
+  }
+  if (bg.stVue && bg.page === "vue") {
+    bg.stVue.forEach(s => { const [x, y] = toScreen([s.lon, s.lat]); g.append("circle").attr("class", "st-vue").attr("cx", x).attr("cy", y).attr("r", 3.4); });
+  }
+  if (bg.stHover && bg.page === "p2") {
+    const s = bg.stHover, [x, y] = toScreen([s.lon, s.lat]);
+    g.append("circle").attr("class", "st-hover-ring").attr("cx", x).attr("cy", y).attr("r", 11);
+    g.append("circle").attr("class", "st-on").attr("cx", x).attr("cy", y).attr("r", 5);
+    // Nom à droite du point, ou à gauche s'il passerait sous le cadre du tableau
+    const left = x + 14 + s.n.length * 6.6 > exploreRect()[2];
+    g.append("text").attr("class", "city").attr("x", left ? x - 14 : x + 14).attr("y", y + 4).attr("text-anchor", left ? "end" : "start").text(s.n);
+  }
+  if (bg.caseMark) {
+    const [x, y] = toScreen([bg.caseMark.lon, bg.caseMark.lat]);
+    g.append("circle").attr("class", "case-dot").attr("cx", x).attr("cy", y).attr("r", 6);
+    g.append("text").attr("class", "case-name").attr("x", x + 10).attr("y", y - 10).text(bg.caseMark.name.split(" à ")[0]);
+  }
+}
+
+// Vue animée vers une cible
+let viewAnim = null;
+// Vol vers une vue. Le zoom et le déplacement sont interpolés ensemble (d3.interpolateZoom) autour
+// d'un point fixe de l'écran, le centre de la zone où la cible est cadrée : le point visé glisse en
+// ligne droite vers ce centre pendant que le zoom change, au lieu de dériver vers le milieu de la page.
+function flyTo(target, rect = [0, 0, bg.W, bg.H]) {
+  const from = { ...bg.T };
+  if (viewAnim) cancelAnimationFrame(viewAnim);
+  if (reduced || (Math.abs(from.k - target.k) < 1e-3 && Math.abs(from.x - target.x) < 0.5 && Math.abs(from.y - target.y) < 0.5)) { applyView(target, true); return; }
+  const sx = (rect[0] + rect[2]) / 2, sy = (rect[1] + rect[3]) / 2, w = Math.min(rect[2] - rect[0], rect[3] - rect[1]);
+  // Vue = [point de la carte sous l'ancre, largeur de carte visible dans la zone]
+  const view = T => [(sx - T.x) / T.k, (sy - T.y) / T.k, w / T.k];
+  const interp = d3.interpolateZoom(view(from), view(target));
+  const t0 = performance.now(), dur = Math.max(900, Math.min(1600, interp.duration * 0.9)), ease = d3.easeCubicInOut;
+  const step = now => {
+    const u = Math.min(1, (now - t0) / dur);
+    const [cx, cy, cw] = interp(ease(u)), k = w / cw;
+    applyView(u === 1 ? target : { k, x: sx - k * cx, y: sy - k * cy }, u === 1);
+    if (u < 1) viewAnim = requestAnimationFrame(step); else viewAnim = null;
+  };
+  viewAnim = requestAnimationFrame(step);
+}
+// Vue qui fait tenir un objet (en coordonnées P0) dans un rectangle de l'écran
+function fitView(feature, rect, maxK = 16) {
+  const [[x0, y0], [x1, y1]] = bg.path0.bounds(feature);
+  const k = Math.min(maxK, (rect[2] - rect[0]) / Math.max(1, x1 - x0), (rect[3] - rect[1]) / Math.max(1, y1 - y0));
+  return { k, x: (rect[0] + rect[2]) / 2 - k * (x0 + x1) / 2, y: (rect[1] + rect[3]) / 2 - k * (y0 + y1) / 2 };
+}
+// Page 1 (et fin) : l'écran entier tient à l'intérieur de la région, sans aucun fond noir.
+// On cherche le plus grand rectangle aux proportions de l'écran inscrit dans le contour
+// (recherche sur une grille de centres, puis affinage autour du meilleur).
+let coverCache = null;
+function inscribedRect() {
+  const { W, H } = bg, ratio = H / W;
+  // Contour allégé (1 point sur 3) : suffisant ici, la marge finale couvre l'écart
+  const rings = DATA.outline.map(decode).map(r => r.filter((_, i) => i % 3 === 0).map(p => bg.P0(p)));
+  const inRing = (x, y, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const inside = (x, y) => rings.some(r => inRing(x, y, r));
+  const fits = (cx, cy, s) => {
+    const hw = s, hh = s * ratio, n = 24;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, xs = cx - hw + 2 * hw * t, ys = cy - hh + 2 * hh * t;
+      if (!inside(xs, cy - hh) || !inside(xs, cy + hh) || !inside(cx - hw, ys) || !inside(cx + hw, ys)) return false;
+    }
+    return true;
+  };
+  const [[x0, y0], [x1, y1]] = bg.path0.bounds(region);
+  const largest = (cx, cy) => { let lo = 0, hi = (x1 - x0) / 2; for (let k = 0; k < 10; k++) { const m = (lo + hi) / 2; fits(cx, cy, m) ? (lo = m) : (hi = m); } return lo; };
+  let best = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, s: 0 };
+  const scan = (ax, ay, bx, by, n) => {
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      const cx = ax + (bx - ax) * i / n, cy = ay + (by - ay) * j / n;
+      if (!inside(cx, cy)) continue;
+      const sz = largest(cx, cy);
+      if (sz > best.s) best = { cx, cy, s: sz };
+    }
+  };
+  scan(x0, y0, x1, y1, 9);
+  const sx = (x1 - x0) / 9, sy = (y1 - y0) / 9;
+  scan(best.cx - sx, best.cy - sy, best.cx + sx, best.cy + sy, 6);
+  best.s *= 0.94;   // marge de sécurité : aucun coin de fond noir, même sur mobile
+  return best;
+}
+function fullView() {
+  if (!coverCache || coverCache.W !== bg.W || coverCache.H !== bg.H) coverCache = { W: bg.W, H: bg.H, ...inscribedRect() };
+  const { cx, cy, s } = coverCache, k = bg.W / (2 * s);
+  return { k, x: bg.W / 2 - k * cx, y: bg.H / 2 - k * cy };
+}
+// Page 2 : la région à gauche, la droite laissée au calque du tableau
+// Zone de l'écran laissée à la carte en page 2 (à gauche du calque du tableau)
+function exploreRect() {
+  const { W, H } = bg, m = 24;
+  const gap = Math.max(22, W * 0.03), panel = Math.min(W * 0.46, 700);   // largeur du calque de droite
+  return isMobile() ? [m, m, W - m, H * 0.46] : [m, m, W - panel - 2 * gap, H - m];
+}
+function regionView() { return fitView(region, exploreRect()); }
+// Vue d'ensemble : la région entière, à droite du calque de texte (et au-dessus de la flèche)
+function vueRect() {
+  const { W, H } = bg, m = 24, gap = Math.max(22, W * 0.03), panel = Math.min(W * 0.36, 480);
+  return isMobile() ? [m, m, W - m, H * 0.4] : [2 * gap + panel, m, W - m, H - m - 60];
+}
+const vueView = () => fitView(region, vueRect());
+// Vue de la carte (et zone de l'écran où elle est cadrée) pour les pages « région »
+const pageView = id => id === "p2" ? [exploreView(), exploreRect()] : id === "vue" ? [vueView(), vueRect()] : [fullView()];
+// Page 2 : la vue suit la sélection. Un département remplit la zone de carte ; un cours d'eau
+// est cadré sans jamais zoomer davantage que sur son département.
+function exploreView() {
+  const r = exploreRect(), pad = 0.06 * Math.min(r[2] - r[0], r[3] - r[1]);
+  const inner = [r[0] + pad, r[1] + pad, r[2] - pad, r[3] - pad];
+  const { dept, river } = sel;
+  if (river) {
+    const cap = 3 * (dept ? fitView(dept.feature, inner).k : regionView().k);
+    return fitView(lines(river), inner, cap);
+  }
+  return dept ? fitView(dept.feature, inner) : regionView();
+}
+
+// Mise en avant : un département (les autres assombris) et/ou des cours d'eau surlignés
+function setFocus(dept, highlight = [], caseMark = null, isHover = false) {
+  bg.focus = dept; bg.highlight = highlight; bg.caseMark = caseMark; bg.focusHover = !!(dept && isHover);
+  if (!bg.dimLayer) return;
+  bg.dimLayer.selectAll("*").remove(); bg.hlLayer.selectAll("*").remove(); bg.onLayer.selectAll("*").remove();
+  if (caseMark) bg.dimLayer.append("path").attr("class", "case-dim").attr("d", bg.path0(region));
+  if (dept) {
+    bg.dimLayer.selectAll("path.dept-dim").data(depts.filter(d => d !== dept)).join("path").attr("class", "dept-dim").attr("d", d => bg.path0(d.feature));
+    bg.onLayer.append("path").attr("class", "dept-on").attr("d", bg.path0(dept.feature));
+  }
+  bg.hlLayer.selectAll("path").data(highlight).join("path").attr("class", "river-on").attr("stroke-width", 3).attr("d", r => bg.path0(lines(r)));
+  placeLabels();
+}
+
+// ================= L'eau qui s'écoule =================
+// Les tracés vont de la source vers l'embouchure : des tirets qui défilent dans ce sens.
+// Largeur d'un cours d'eau à la fraction f de sa longueur (0 = source, 1 = embouchure),
+// la même que sur le tracé dessiné en fond.
+const riverWidth = (r, f) => (r.rp ? 0.7 + (0.5 + 3.2 * Math.sqrt(r.at / maxAt)) * f : r.k >= 10 ? 0.7 : 0.4);
+const FLOW_SPEED = 0.014;   // vitesse de l'eau, en pixels d'écran par milliseconde
+function setFlow(list) {
+  bg.flowRivers = list;
+  bg.flow = [];
+  // Chaque rivière est découpée en tronçons de largeur croissante ; « start » est la distance
+  // depuis le début de la partie, pour raccorder les tirets d'un tronçon à l'autre.
+  for (const r of list) {
+    r.parts.forEach((part, j) => {
+      const pts = part.map(p => bg.P0(p));
+      const [p0, p1] = r.rp ? r.rp[j] : [0, 1];
+      const seg = [0];
+      for (let i = 1; i < pts.length; i++) seg.push(seg[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      const total = seg.at(-1) || 1, pieces = r.rp ? Math.max(1, Math.round(16 * (p1 - p0))) : 1, step = total / pieces;
+      let i = 0;
+      for (let c = 0; c < pieces; c++) {
+        const path = new Path2D(), start = seg[i], end = c === pieces - 1 ? total : (c + 1) * step;
+        path.moveTo(pts[i][0], pts[i][1]);
+        while (i < pts.length - 1 && seg[i] < end) { i++; path.lineTo(pts[i][0], pts[i][1]); }
+        const f = p0 + (p1 - p0) * ((start + seg[i]) / 2) / total;
+        bg.flow.push({ p: path, lw: riverWidth(r, f), start });
+      }
+    });
+  }
+  paintFlow(bg.t || 0);
+}
+function paintFlow(t) {
+  bg.t = t;
+  const ctx = cFlow.getContext("2d"), dpr = bg.dpr, T = bg.T;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cFlow.width, cFlow.height);
+  if (!bg.flow.length) return;
+  ctx.setTransform(dpr * T.k, 0, 0, dpr * T.k, dpr * T.x, dpr * T.y);
+  ctx.lineCap = "butt"; ctx.strokeStyle = tok("flow");
+  const dash = (8 * bg.scale + 3) / T.k, gap = (26 * bg.scale + 9) / T.k;
+  ctx.setLineDash([dash, gap]);
+  const offset = -(t * FLOW_SPEED) / T.k;
+  const grow = bg.scale * Math.pow(T.k, 0.35) / T.k;   // même règle d'épaisseur que le tracé de fond
+  for (const f of bg.flow) {
+    ctx.lineWidth = f.lw * grow;
+    ctx.lineDashOffset = (offset + f.start) % (dash + gap);
+    ctx.stroke(f.p);
+  }
+}
+function tick(t) { if (!reduced && bg.flow.length) paintFlow(t); requestAnimationFrame(tick); }
+
+// ================= Tableau =================
+const DOMAIN = { week: [0, 100], month: [12, 88], quarter: [17, 83], year: [28, 72] };
+const colorFor = g => { const [a, b] = DOMAIN[g]; return v => d3.interpolatePlasma(0.06 + 0.82 * Math.max(0, Math.min(1, (v - a) / (b - a)))); };
+document.querySelectorAll(".scale").forEach(i => (i.style.background = `linear-gradient(90deg, ${d3.range(0, 101, 10).map(v => colorFor("week")(v)).join(",")})`));
+let gran = "week";
+const monthOf = i => { const d = new Date(weekDate(i).getTime() + 3 * 864e5); return d.getFullYear() * 12 + d.getMonth(); };
+const BUCKETS = {};
+function buckets(g) {
+  if (BUCKETS[g]) return BUCKETS[g];
+  const key = g === "week" ? (i => i) : g === "month" ? monthOf : g === "quarter" ? (i => Math.floor(monthOf(i) / 3)) : (i => DATA.years[i]), list = [];
+  for (let i = 0; i < N; i++) { const k = key(i); if (!list.length || list.at(-1).k !== k) list.push({ k, first: i, weeks: [] }); list.at(-1).weeks.push(i); }
+  return (BUCKETS[g] = list);
+}
+// Une ligne contient soit des rangs (octets 0-100, 255 = manquant), soit des valeurs mesurées
+// (nombres, null = manquant). Au mois et à l'année : moyenne des semaines.
+const asNumbers = values => (values instanceof Uint8Array ? Array.from(values, v => (v === MISSING ? null : v)) : values);
+function aggregate(values, g) {
+  const v0 = asNumbers(values);
+  if (g === "week") return v0;
+  return buckets(g).map(b => { const v = b.weeks.map(i => v0[i]).filter(x => x !== null); return v.length >= b.weeks.length / 2 ? v.reduce((s, x) => s + x, 0) / v.length : null; });
+}
+const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const QUARTERS = ["janvier à mars", "avril à juin", "juillet à septembre", "octobre à décembre"];
+const bucketLabel = (g, j) => { const b = buckets(g)[j]; return g === "week" ? "semaine du " + weekDate(b.first).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : g === "month" ? `${MONTHS[b.k % 12]} ${Math.floor(b.k / 12)}` : g === "quarter" ? `${QUARTERS[b.k % 4]} ${Math.floor(b.k / 4)}` : `année ${b.k}`; };
+function paint(canvas, values, color) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight, n = values.length;
+  if (!w) return;
+  canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height, gap = n < 400 ? Math.max(1, dpr * 0.5) : 0, miss = tok("missing");
+  for (let i = 0; i < n; i++) {
+    const x0 = Math.floor(i * W / n), x1 = Math.floor((i + 1) * W / n), v = values[i];
+    ctx.fillStyle = v === null ? miss : color(v); ctx.fillRect(x0, 0, Math.max(1, x1 - x0 - gap), H);
+  }
+}
+function axis(canvas, from = 0, to = N) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr);
+  ctx.fillStyle = tok("ink-2"); ctx.font = "10.5px " + getComputedStyle(document.body).fontFamily; ctx.textBaseline = "top";
+  // Une année sur 1, 2, 5 ou 10 selon la place disponible par année
+  const perYear = w / ((to - from) / 52), every = perYear >= 34 ? 1 : perYear >= 17 ? 2 : perYear >= 7 ? 5 : 10; let last = null;
+  for (let i = from; i < to; i++) {
+    const y = DATA.years[i]; if (y === last) continue; last = y;
+    if (i > from || i === 0 || DATA.years[i - 1] !== y) { const x = (i - from) / (to - from) * w; ctx.fillRect(x, 11, 1, 5); if ((y - 2000) % every === 0) ctx.fillText(String(y), x + 3, 0); }
+  }
+}
+
+// ---- Valeurs mesurées : décodage et unités ----
+// Débit : valeurs du fichier divisées par 1 000 (elles ont l'ordre de grandeur de L/s) -> m³/s
+const UNIT = { pluie: "mm", neige: "mm", humidite: "", temp: "°C", debit: "m³/s" };
+const PER_WEEK = { pluie: true, neige: true };
+function decodeRaw(b64, [lo, hi, log], div = 1) {
+  const b = unpack(b64), out = new Array(b.length);
+  for (let i = 0; i < b.length; i++) { const t = lo + b[i] / 254 * (hi - lo); out[i] = b[i] === MISSING ? null : (log ? Math.expm1(t) : t) / div; }
+  return out;
+}
+const rawCache = new Map();
+function measured(obj, key, c) {
+  const k = key + "|" + c;
+  if (!rawCache.has(k)) rawCache.set(k, decodeRaw(obj.raw[c], obj.rs[c], c === "debit" ? 1000 : 1));
+  return rawCache.get(k);
+}
+function fmtVal(v, c) {
+  const n = c === "humidite" ? nf2(v) : c === "debit" ? (v >= 100 ? nf0.format(v) : v >= 1 ? nf1.format(v) : nf2(v)) : nf1.format(v);
+  return `${n}${UNIT[c] ? " " + UNIT[c] : ""}${PER_WEEK[c] ? " par semaine" : c === "humidite" ? " (indice d'humidité du sol)" : ""}`;
+}
+
+// ---- Tableau : lignes et groupes repliables (affluents), deux modes de couleur ----
+let mode = "rank";   // "rank" : écart à la normale ; "raw" : valeurs mesurées
+function rowColor(d) {
+  if (!d.raw) return colorFor(d.g);
+  // Valeurs mesurées : une échelle propre à la ligne (3e au 97e centile ; le débit en logarithme)
+  const tf = d.c === "debit" ? (x => Math.log1p(x)) : (x => x);
+  const v = d.values.filter(x => x !== null).map(tf).sort((a, b) => a - b);
+  const lo = d3.quantileSorted(v, 0.03) ?? 0, hi = d3.quantileSorted(v, 0.97) ?? 1, span = (hi - lo) || 1;
+  return x => d3.interpolatePlasma(0.06 + 0.82 * Math.max(0, Math.min(1, (tf(x) - lo) / span)));
+}
+function table(el, rows, opts = {}) {
+  el.innerHTML = "";
+  if (!rows.length) { el.innerHTML = `<p class="empty">${opts.empty || "Pas de données."}</p>`; return; }
+  const g = opts.gran || gran, drawn = [];
+  // Première colonne affichée : celle qui contient la semaine opts.from (par défaut, la toute première)
+  const j0 = opts.from ? Math.max(0, buckets(g).findIndex(b => b.weeks.at(-1) >= opts.from)) : 0, w0 = buckets(g)[j0].first;
+  // Dernière colonne : celle qui contient la semaine opts.to (par défaut, la toute dernière)
+  const j1 = opts.to != null ? buckets(g).findIndex(b => b.weeks.at(-1) >= opts.to) : buckets(g).length - 1, w1 = buckets(g)[j1].weeks.at(-1) + 1;
+  const ax = document.createElement("div"); ax.className = "axis"; ax.innerHTML = "<span></span><canvas></canvas>"; el.appendChild(ax);
+  const paintRow = d => paint(d.canvas, d.values, rowColor(d));
+  function addRows(parent, list, depth) {
+    list.forEach(r => {
+      const row = document.createElement("div");
+      row.className = "row " + (r.cls || "big"); row.style.setProperty("--depth", depth);
+      const plus = r.expand ? `<button type="button" class="plus" aria-expanded="false" title="${esc(r.expand.title)}" aria-label="${esc(r.expand.title)}">+</button>` : "";
+      row.innerHTML = `<span class="lbl" title="${esc(r.label)}"><span class="slot">${plus}</span>${r.html || esc(r.label)}</span><canvas></canvas>`;
+      parent.appendChild(row);
+      // Ligne d'une station : au survol, la station s'allume sur la carte
+      if (r.st) { row.addEventListener("mouseenter", () => hoverStation(r.st)); row.addEventListener("mouseleave", () => hoverStation(null)); }
+      const d = { canvas: row.querySelector("canvas"), values: aggregate(r.values, g).slice(j0, j1 + 1), label: r.label, g, c: r.c, raw: !(r.values instanceof Uint8Array) };
+      drawn.push(d);
+      paintRow(d);
+      if (r.expand) {
+        // Débits des affluents : dépliés sous la ligne, à la demande
+        const box = document.createElement("div"); box.className = "grp-box"; box.hidden = true; parent.appendChild(box);
+        let built = false;
+        row.querySelector(".plus").addEventListener("click", e => {
+          const open = box.hidden, btn = e.currentTarget;
+          box.hidden = !open; btn.setAttribute("aria-expanded", open); btn.textContent = open ? "−" : "+";
+          if (open && !built) { built = true; addRows(box, r.expand.children(), depth + 1); }
+          else if (open) drawn.filter(x => box.contains(x.canvas)).forEach(paintRow);
+        });
+      }
+    });
+  }
+  addRows(el, rows, 0);
+  const cursor = document.createElement("div"); cursor.className = "cursor"; cursor.hidden = true; el.appendChild(cursor);
+  axis(ax.querySelector("canvas"), w0, w1);
+  // Encadrés : une période mise en évidence sur toutes les lignes
+  (opts.marks || []).forEach(m => {
+    const mk = document.createElement("div"); mk.className = "mark";
+    mk.style.setProperty("--a", (m.from - w0) / (w1 - w0)); mk.style.setProperty("--w", (m.to + 1 - m.from) / (w1 - w0));
+    mk.style.top = (ax.offsetHeight + 1) + "px";
+    mk.innerHTML = `<span>${esc(m.label)}</span>`; el.appendChild(mk);
+  });
+  const visible = d => d.canvas.getClientRects().length > 0;
+  el.onmousemove = e => {
+    const tip = $("tip"), any = drawn.find(d => { if (!visible(d)) return false; const b = d.canvas.getBoundingClientRect(); return e.clientX >= b.left && e.clientX <= b.right; });
+    if (!any) { tip.hidden = true; cursor.hidden = true; return; }
+    const tb = el.getBoundingClientRect(); cursor.hidden = false; cursor.style.left = (e.clientX - tb.left) + "px";
+    const d = drawn.find(d => { if (!visible(d)) return false; const b = d.canvas.getBoundingClientRect(); return e.clientY >= b.top - 2 && e.clientY <= b.bottom + 2 && e.clientX >= b.left && e.clientX <= b.right; });
+    if (!d) { tip.hidden = true; return; }
+    const b = d.canvas.getBoundingClientRect(), n = d.values.length, j = Math.min(n - 1, Math.max(0, Math.floor((e.clientX - b.left) / b.width * n))), v = d.values[j];
+    let what;
+    if (v === null) what = "pas de mesure";
+    else if (d.raw) what = (d.g === "week" ? "" : "en moyenne : ") + fmtVal(v, d.c);
+    else if (d.g === "week") what = v >= 50 ? `plus haute que ${Math.round(v)} % des mêmes semaines depuis 2000` : `plus basse que ${Math.round(100 - v)} % des mêmes semaines depuis 2000`;
+    else what = `rang moyen ${nf0.format(v)} sur 100 (50 = habituel)`;
+    tip.innerHTML = `<b>${esc(d.label)}</b><br>${bucketLabel(d.g, j + j0)}<br>${what}`;
+    tip.hidden = false; tip.style.left = Math.min(innerWidth - 310, e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px";
+  };
+  el.onmouseleave = () => { $("tip").hidden = true; cursor.hidden = true; };
+}
+
+// ================= Pages 1 et 2 : la région, l'exploration =================
+let sel = { dept: null, river: null }, hovered = null;
+const clicksOff = () => bg.page === "p1" || bg.page === "obs";   // page 1 : la carte se survole, ne se clique pas
+const onLanding = () => bg.page === "p1" || bg.page === "vue" || bg.page === "obs" || bg.page === "outro";
+function onDeptHover(d) {
+  if (bg.mode !== "region" || onLanding()) return;   // page 1 : pas de surbrillance des départements
+  hovered = d;
+  if (sel.dept || sel.river) return;
+  setFocus(d, [], null, true);
+}
+// Page 1 : l'eau ne coule que dans le cours d'eau survolé
+function onRiverHover(r) {
+  if (bg.mode !== "region") return;
+  if (bg.page === "p2") {
+    // Page 2, département choisi : le cours d'eau survolé s'éclaire
+    bg.hoverLayer.selectAll("*").remove();
+    if (r && sel.dept) bg.hoverLayer.append("path").attr("class", "river-hover").attr("stroke-width", 3.5).attr("d", bg.path0(lines(r)));
+    return;
+  }
+  if (!onLanding()) return;
+  bg.hoverRiver = r;
+  setFlow(r ? riverNetwork(r) : []);
+}
+function onDeptClick(d) {
+  if (bg.mode !== "region" || clicksOff()) return;
+  // Page 2 : recliquer sur le département sélectionné revient à la région entière
+  if (bg.page === "p2" && sel.dept === d && !sel.river) { selectRegion(); return; }
+  selectDept(d);
+  if (bg.page === "vue") go("p2");   // depuis la vue d'ensemble, on passe à l'exploration
+}
+function selectRegion() { sel = { dept: null, river: null }; updateExplore(); }
+function selectDept(d) { sel = { dept: d, river: null }; updateExplore(); }
+function selectRiver(r) {
+  if (bg.mode !== "region") return;
+  // Recliquer sur le cours d'eau sélectionné le désélectionne (retour à son département)
+  if (sel.river === r) { sel = { dept: sel.dept, river: null }; updateExplore(); return; }
+  const st = stationsByRiver.get(r.c) || [];
+  const code = [...d3.rollup(st, v => v.length, s => s.dept).entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  sel = { dept: sel.dept || deptByCode[code] || null, river: r }; updateExplore();
+  if (bg.page === "vue") go("p2");   // depuis la vue d'ensemble, on passe à l'exploration
+}
+function regionMapState() {
+  const { dept, river } = sel;
+  if (onLanding()) {
+    bg.stHL = []; $("st-legend").hidden = true;
+    setFocus(null, []);
+    setFlow(bg.hoverRiver ? riverNetwork(bg.hoverRiver) : []);
+    return;
+  }
+  bg.stHL = river ? stationsByRiver.get(river.c) || [] : [];
+  $("st-legend").hidden = !(river && bg.page === "p2");
+  if (river) $("st-legend-text").textContent = `${bg.stHL.length} station${bg.stHL.length > 1 ? "s" : ""} de mesure · ${riverName(river)}`;
+  setFocus(dept || hovered, river ? [river] : [], null, !dept && !!hovered);
+  setFlow(river ? riverNetwork(river) : []);
+}
+const ALL_VARS = ["pluie", "neige", "humidite", "temp", "debit"];
+const stationById = Object.fromEntries(stations.map(s => [s.id, s]));
+const shortSt = s => s.n.replace(/^.*? à /, "à ");
+// Valeur d'une ligne de station selon le mode
+const stValues = (s, c) => (mode === "rank" ? s.rowsU[c] : measured(s, "st" + s.id, c));
+// Nombre de stations dans le réseau d'un cours d'eau (lui et ses affluents)
+const subtreeCount = c => { const t = DATA.tree[c]; return t ? t.st.length + t.kids.reduce((n, [b]) => n + subtreeCount(b), 0) : 0; };
+const treeName = c => tidyName(DATA.tree[c]?.n);
+// Lignes de débit d'un cours d'eau, de l'amont vers l'aval ; chaque affluent équipé d'une station
+// est rangé, repliable, sous la station du cours d'eau située juste en aval de sa confluence.
+// Lignes de débit d'un cours d'eau, de l'amont vers l'aval. Les affluents équipés d'une station
+// ne s'affichent pas d'emblée : un « + » devant la station située juste en aval de leur
+// confluence déroule leurs débits (et ceux de leurs propres affluents, de la même façon).
+function riverRows(c, named = false) {
+  const t = DATA.tree[c];
+  if (!t) return [];
+  const sts = t.st.map(id => stationById[id]).filter(Boolean);
+  const kidRows = list => list.flatMap(([b]) => riverRows(b, true));
+  if (!sts.length) return kidRows(t.kids);   // affluent sans station propre : ceux de ses affluents
+  const name = treeName(c);
+  return sts.map((s, i) => {
+    const prev = i ? sts[i - 1].pos : -Infinity, last = i === sts.length - 1;
+    const attached = t.kids.filter(([, p]) => p > prev && (p <= s.pos || last));
+    const row = { label: `Débit · ${s.n}`, values: stValues(s, "debit"), c: "debit", st: s,
+      html: named ? `${esc(name)} <small>${esc(shortSt(s))}</small>` : `Débit <small>${esc(shortSt(s))}</small>` };
+    if (attached.length) row.expand = { title: `Afficher les affluents : ${attached.map(([b]) => treeName(b)).join(", ")}`, children: () => kidRows(attached) };
+    return row;
+  });
+}
+function updateExplore() {
+  const { dept, river } = sel;
+  bg.stHover = null;   // le tableau est reconstruit : plus de station survolée
+  if (bg.mode === "region") regionMapState();
+  if (bg.page === "p2") flyTo(exploreView(), exploreRect());
+  front.classed("has-dept", !!dept);
+  if (bg.hitRivers) bg.hitRivers.classed("in-dept", r => !!(dept && isClickable(r) && r.d && r.d.includes(dept.code)));
+  if (bg.hoverLayer) bg.hoverLayer.selectAll("*").remove();
+  // Dès qu'un département ou un cours d'eau est choisi, la flèche vers la page suivante s'efface
+  document.querySelectorAll("#p2 .p2-next").forEach(el => { el.hidden = !!(dept || river); });
+  const parts = [!dept && !river ? `<span>Grand Est</span>` : `<button type="button" data-crumb="region">Grand Est</button>`];
+  if (dept) parts.push(`<span class="sep">›</span>`, river ? `<button type="button" data-crumb="dept">${esc(dept.nom)}</button>` : `<span>${esc(dept.nom)}</span>`);
+  if (river) parts.push(`<span class="sep">›</span>`, `<span>${esc(riverName(river))}</span>`);
+  $("crumbs").innerHTML = parts.join(" ");
+  $("desel").hidden = !(dept || river);
+  $("crumbs").querySelectorAll("[data-crumb]").forEach(b => b.addEventListener("click", () => (b.dataset.crumb === "region" ? selectRegion() : selectDept(dept))));
+  $("scale-text").textContent = mode === "rank" ? "" : "· échelle propre à chaque ligne";
+  $("foot-text").innerHTML = mode === "rank"
+    ? "Couleur : rang de la période parmi les mêmes périodes de l'année sur 2000-2026, à chaque station (moyenne des stations pour la région et les départements). Le cycle des saisons est ainsi retiré. Cases grises : pas de mesure."
+    : "Valeurs mesurées : pluie et neige en mm par semaine, température en °C, humidité du sol en indice (0 = sec, 1 et plus = saturé). Débit en m³/s : valeurs du fichier divisées par 1 000, car elles ont l'ordre de grandeur de litres par seconde. Les saisons dominent : hiver humide, été sec.";
+  if (river) {
+    const st = (stationsByRiver.get(river.c) || []).slice().sort((a, b) => (a.pos ?? 0) - (b.pos ?? 0)), ref = st.at(-1);
+    const nTrib = (DATA.tree[river.c]?.kids || []).length;
+    $("ex-sub").textContent = `${st.length} station${st.length > 1 ? "s" : ""} sur ce cours d'eau, de l'amont vers l'aval${nTrib ? ` ; le + déroule le débit des affluents qui le rejoignent juste en amont` : ""}. Météo et sol : station la plus en aval (${ref.n}).`;
+    table($("t-explore"), [
+      ...["pluie", "neige", "humidite", "temp"].map(c => ({ label: `${VARLBL[c]} · ${ref.n}`, html: VARLBL[c], values: stValues(ref, c), cls: "mid", c })),
+      ...riverRows(river.c),
+    ]);
+  } else {
+    const who = dept ? `des ${dept.n} stations du département` : `des ${DATA.nStations} stations`;
+    if (mode === "rank") {
+      const src = dept ? dept.rowsU : regionRows;
+      $("ex-sub").textContent = `Moyenne ${who}. Cliquez sur ${dept ? "un cours d'eau" : "un département ou un cours d'eau"} de la carte.`;
+      table($("t-explore"), ALL_VARS.map(v => ({ label: `${VARLBL[v]}${dept ? " · " + dept.nom : ""}`, html: VARLBL[v], values: src[v], c: v })));
+    } else {
+      const obj = dept || DATA.regionRaw, key = dept ? "d" + dept.code : "region";
+      $("ex-sub").textContent = `Moyenne ${who}. Le débit mesuré s'affiche quand on choisit un cours d'eau : une moyenne de rivières de tailles différentes n'aurait pas de sens.`;
+      table($("t-explore"), ["pluie", "neige", "humidite", "temp"].map(v => ({ label: `${VARLBL[v]}${dept ? " · " + dept.nom : ""}`, html: VARLBL[v], values: measured(obj, key, v), c: v })));
+    }
+  }
+}
+document.querySelectorAll("#gran button").forEach(b => b.addEventListener("click", () => {
+  gran = b.dataset.v;
+  document.querySelectorAll("#gran button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  updateExplore();
+}));
+document.querySelectorAll("#mode button").forEach(b => b.addEventListener("click", () => {
+  mode = b.dataset.v;
+  document.querySelectorAll("#mode button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  updateExplore();
+}));
+
+// ================= Les cinq cas : un calque par cours d'eau =================
+const M = DATA.median, NM = DATA.nMeasured;
+const TEXT = {
+  nerveux: f => `<p>Le Rosselle copie la pluie : c'est le cours d'eau qui la suit le plus fidèlement, ${f.rankRain === 1 ? "premier" : f.rankRain + "e"} sur ${NM}. Une averse, il monte ; une semaine sèche, il redescend.</p>
+    <p>Il passe ${nf0.format(f.sw)} fois par an d'un côté à l'autre de la normale, deux fois plus qu'une rivière ordinaire.</p>`,
+  lente: f => `<p>La Suippe ignore les averses. Mais une année humide lui dure : à partir de ${fmtDate(f.hiFrom)}, elle reste <b>${f.hi} semaines d'affilée</b> au-dessus de la normale.</p>
+    <p class="hypo"><b>L'explication probable :</b> elle puise dans la craie de Champagne, qui se remplit et se vide lentement.</p>`,
+  montagnarde: f => `<p>La Lauch descend des Vosges. Pour savoir si son printemps sera fort, inutile de regarder la pluie de l'hiver : il faut regarder sa neige.
+    Plus l'hiver est neigeux, plus le printemps est fort${f.rankWSnow === 1 ? ", plus nettement que partout ailleurs dans la région" : ""}.</p>
+    <p class="hypo"><b>L'explication probable :</b> la neige garde l'eau de l'hiver sur les sommets et la rend en fondant.</p>`,
+  domptee: f => `<p>La Plaine n'écoute ni la pluie, ni son sol : pour le sol, c'est le lien le plus faible des ${NM} stations. Comme si quelqu'un tenait le robinet.</p>
+    <p>L'été, quand les sols sèchent, les rivières s'effondrent. La Plaine, à peine${f.ampRhin && f.amp < f.ampRhin ? " : elle est plus régulière que le Rhin" : ""}.</p>
+    <p class="hypo"><b>L'explication probable :</b> en amont, le barrage de Pierre-Percée règle son débit.</p>`,
+  rebelle: f => `<p>Presque toutes les rivières ont perdu de l'eau depuis 2000. La Fensch, elle, gagne. Après ${f.lo} semaines sous la normale, son débit est <b>multiplié par ${nf1.format(f.ratio2008)}</b> en 2008, et ne redescend plus. La pluie n'a pris que ${nf0.format(100 * (f.rainAfter / f.rainBefore - 1))} %.</p>
+    <p class="hypo"><b>L'explication probable :</b> l'eau des anciennes mines de fer, ennoyées après l'arrêt des pompages.</p>`,
+};
+const FIGS = {
+  nerveux: f => [[nf2(f.rain), "lien avec la pluie, n° 1"], [nf0.format(f.sw) + "/an", "passages autour de la normale"], [f.inertie + " sem.", "retour à la normale"]],
+  lente: f => [[f.hi + " sem.", "d'affilée au-dessus"], [nf2(f.rain), "lien avec la pluie"], [f.inertie + " sem.", "retour à la normale"]],
+  montagnarde: f => [[nf2(f.wSnow), `lien neige d'hiver / débit de printemps${f.rankWSnow === 1 ? ", n° 1" : ""}`], [nf2(f.wRain), "lien pluie d'hiver / débit de printemps"], [nf2(f.wSnowMed), "lien neige / printemps, station médiane"]],
+  domptee: f => [[nf2(f.soil), "lien avec le sol, le plus faible"], [nf2(f.rain), "lien avec la pluie"], [f.inertie + " sem.", "retour à la normale"]],
+  rebelle: f => [[signed(f.trend) + " pts", `débit, le plus fort gain des ${DATA.nTrend} stations`], ["× " + nf1.format(f.ratio2008), "débit après 2008"], [f.lo + " sem.", "sous la normale avant"]],
+};
+const POS = ["lt", "rb", "lb", "rt", "lc"];
+const CASE_ROWS = { nerveux: ["pluie", "debit"] };
+$("steps").innerHTML = cases.map((c, i) => `
+  <section class="step pos-${POS[i % POS.length]}" id="c${i}" data-case="${i}">
+    <div class="card layer">
+      <p class="num">${esc(c.dept)}</p>
+      <h2>${esc(c.title)}</h2>
+      <h3>${esc(c.name)}</h3>
+      ${TEXT[c.key](c.facts)}
+      <div class="figs">${FIGS[c.key](c.facts).map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join("")}</div>
+      ${c.chart ? `<div class="chart" id="ch-case${i}"></div>` : `<div class="tbl" id="t-case${i}"></div>`}
+    </div>
+  </section>`).join("");
+// ---- Graphiques des cas : à la place du tableau quand il ne montre pas l'essentiel ----
+const MONTH_TICKS = [["J", 1], ["F", 5], ["M", 9], ["A", 14], ["M", 18], ["J", 22], ["J", 27], ["A", 31], ["S", 36], ["O", 40], ["N", 44], ["D", 49]];
+const monthOfWeek = w => MONTHS[d3.bisectRight(MONTH_TICKS.map(m => m[1]), w) - 1];
+const nfx = v => "× " + nf1.format(v);
+const lowerArticle = s => s.replace(/^(La |Le |Les |L')/, a => a.toLowerCase());   // « la Plaine » en milieu de phrase
+function showTip(e, html) { const tip = $("maptip"); tip.innerHTML = html; tip.hidden = false; tip.style.left = (e.clientX + 12) + "px"; tip.style.top = (e.clientY + 12) + "px"; }
+const hideTip = () => { $("maptip").hidden = true; };
+function chartFrame(el, W, H, label) {
+  return d3.select(el).html("").append("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("role", "img").attr("aria-label", label);
+}
+// La domptée : l'année type de toutes les stations (débit de chaque semaine / moyenne de l'année)
+function chartSaisons(el, c) {
+  const { lines, ids, hl } = c.chart, f = c.facts, river = c.name.split(" à ")[0];
+  const W = 400, H = 196, m = { l: 26, r: 74, t: 8, b: 20 }, top = 3;
+  const x = d3.scaleLinear([1, 52], [m.l, W - m.r]), y = d3.scaleLinear([0, top], [H - m.b, m.t]);
+  const me = lines[ids.indexOf(hl)], others = lines.filter((_, i) => ids[i] !== hl);
+  const med = d3.range(52).map(w => d3.median(others, l => l[w]));
+  const line = d3.line((v, i) => x(i + 1), v => y(Math.min(v, top)));
+  const svg = chartFrame(el, W, H, `Débit de chaque semaine rapporté à la moyenne de l'année : ${river} et les ${others.length} autres stations`);
+  svg.append("g").selectAll("line").data([0, 1, 2, 3]).join("line").attr("class", "grid").attr("x1", m.l).attr("x2", W - m.r).attr("y1", y).attr("y2", y);
+  svg.append("g").selectAll("text").data([0, 1, 2, 3]).join("text").attr("class", "tick").attr("x", m.l - 5).attr("y", v => y(v) + 3.5).attr("text-anchor", "end").text(v => "× " + v);
+  svg.append("g").selectAll("text").data(MONTH_TICKS).join("text").attr("class", "tick").attr("x", d => x(d[1] + 2)).attr("y", H - 5).attr("text-anchor", "middle").text(d => d[0]);
+  svg.append("g").selectAll("path").data(others).join("path").attr("class", "l-other").attr("d", line);
+  svg.append("path").attr("class", "l-med").attr("d", line(med));
+  svg.append("path").attr("class", "l-hl").attr("d", line(me));
+  // Étiquettes directes à droite, écartées si elles se chevauchent
+  let yHl = y(me[51]), yMed = y(med[51]);
+  if (Math.abs(yHl - yMed) < 12) { const mid = (yHl + yMed) / 2, s = yHl < yMed ? -6 : 6; yHl = mid + s; yMed = mid - s; }
+  svg.append("text").attr("class", "lbl-hl").attr("x", W - m.r + 6).attr("y", yHl + 4).text(river);
+  svg.append("text").attr("class", "lbl").attr("x", W - m.r + 6).attr("y", yMed + 4).text("médiane");
+  // Survol : repère vertical et valeurs de la semaine
+  const cross = svg.append("line").attr("class", "cross").attr("y1", m.t).attr("y2", H - m.b).style("display", "none");
+  const dots = svg.append("g").style("display", "none");
+  const dHl = dots.append("circle").attr("r", 4).attr("class", "dot-hl"), dMed = dots.append("circle").attr("r", 3.5).attr("class", "dot-med");
+  svg.append("rect").attr("x", m.l).attr("y", m.t).attr("width", W - m.l - m.r).attr("height", H - m.t - m.b).attr("fill", "transparent")
+    .on("mousemove", e => {
+      const w = Math.max(1, Math.min(52, Math.round(x.invert(d3.pointer(e, svg.node())[0]))));
+      cross.style("display", null).attr("x1", x(w)).attr("x2", x(w)); dots.style("display", null);
+      dHl.attr("cx", x(w)).attr("cy", y(Math.min(me[w - 1], top))); dMed.attr("cx", x(w)).attr("cy", y(Math.min(med[w - 1], top)));
+      showTip(e, `Semaine ${w} (${monthOfWeek(w)})<br><b>${esc(river)} : ${nfx(me[w - 1])}</b><br>station médiane : ${nfx(med[w - 1])}`);
+    })
+    .on("mouseleave", () => { cross.style("display", "none"); dots.style("display", "none"); hideTip(); });
+  d3.select(el).append("p").attr("class", "cap").html(`Débit moyen de chaque semaine, divisé par la moyenne de l'année. En gris, les ${others.length} autres stations.
+    Entre sa semaine la plus haute et la plus basse : ${nfx(f.amp)} pour ${esc(lowerArticle(river))}, ${nfx(f.ampMed)} pour la station médiane.`);
+}
+// La montagnarde : chaque hiver (neige, pluie) face au débit du printemps qui suit
+function chartHivers(el, c) {
+  const pts = c.chart.pts, f = c.facts, river = c.name.split(" à ")[0];
+  const W = 400, H = 196, gap = 22, m = { l: 34, r: 6, t: 34, b: 30 }, pw = (W - m.l - m.r - gap) / 2;
+  const y = d3.scaleLinear([0, d3.max(pts, p => p[3]) * 1.08], [H - m.b, m.t]).nice();
+  const svg = chartFrame(el, W, H, `Chaque hiver : neige et pluie de décembre à mars, face au débit du printemps qui suit, pour ${river}`);
+  svg.append("g").selectAll("text").data(y.ticks(3)).join("text").attr("class", "tick").attr("x", m.l - 5).attr("y", v => y(v) + 3.5).attr("text-anchor", "end").text(v => nf1.format(v));
+  svg.append("text").attr("class", "tick").attr("x", m.l - 5).attr("y", m.t - 10).attr("text-anchor", "end").text("m³/s");
+  const all = [];
+  [[1, "Neige de l'hiver", f.wSnow], [2, "Pluie de l'hiver", f.wRain]].forEach(([k, title, r], j) => {
+    const x0 = m.l + j * (pw + gap), x = d3.scaleLinear([0, d3.max(pts, p => p[k]) * 1.05], [x0, x0 + pw]).nice();
+    const g = svg.append("g");
+    g.append("text").attr("class", j ? "lbl" : "lbl-hl").attr("x", x0).attr("y", 11).text(`${title} · lien ${nf2(r)}`);
+    g.selectAll("line").data(y.ticks(3)).join("line").attr("class", "grid").attr("x1", x0).attr("x2", x0 + pw).attr("y1", y).attr("y2", y);
+    g.selectAll("text.tick").data(x.ticks(3).filter(v => v > 0)).join("text").attr("class", "tick").attr("x", x).attr("y", H - m.b + 13).attr("text-anchor", "middle").text(v => nf0.format(v));
+    g.append("text").attr("class", "tick").attr("x", x0 + pw).attr("y", H - 3).attr("text-anchor", "end").text("mm, déc. à mars");
+    // Droite de tendance (moindres carrés)
+    const mx = d3.mean(pts, p => p[k]), my = d3.mean(pts, p => p[3]);
+    const b = d3.sum(pts, p => (p[k] - mx) * (p[3] - my)) / d3.sum(pts, p => (p[k] - mx) ** 2);
+    const [xa, xb] = d3.extent(pts, p => p[k]);
+    g.append("line").attr("class", j ? "trend-off" : "trend").attr("x1", x(xa)).attr("x2", x(xb)).attr("y1", y(my + b * (xa - mx))).attr("y2", y(my + b * (xb - mx)));
+    all.push(g.selectAll("circle.pt").data(pts).join("circle").attr("class", j ? "pt pt-off" : "pt").attr("r", 4).attr("cx", p => x(p[k])).attr("cy", p => y(p[3])));
+    g.selectAll("circle.hit").data(pts).join("circle").attr("class", "hit").attr("r", 9).attr("cx", p => x(p[k])).attr("cy", p => y(p[3]))
+      .on("mouseenter mousemove", (e, p) => {
+        all.forEach(s => s.classed("on", q => q === p));
+        showTip(e, `Hiver ${p[0] - 1}-${p[0]}<br>neige ${nf0.format(p[1])} mm · pluie ${nf0.format(p[2])} mm<br><b>printemps ${p[0]} : ${nf2(p[3])} m³/s</b>`);
+      })
+      .on("mouseleave", () => { all.forEach(s => s.classed("on", false)); hideTip(); });
+  });
+  d3.select(el).append("p").attr("class", "cap").html(`Chaque point est un hiver (décembre à mars) et le printemps qui le suit (avril à juin) : ${pts.length} hivers.
+    Débit moyen du printemps, en m³/s.`);
+}
+const CHARTS = { saisons: chartSaisons, hivers: chartHivers };
+function drawCaseTables() {
+  cases.filter(c => c.chart).forEach(c => CHARTS[c.chart.type]($("ch-case" + c.idx), c));
+  cases.filter(c => !c.chart).forEach(c => table($("t-case" + c.idx), (CASE_ROWS[c.key] || ["pluie", "humidite", "debit"]).map(v => ({
+    label: `${VARLBL[v]} · ${c.name.split(" à ")[0]}`, html: VARLBL[v], values: c.rowsU[v], cls: v === "debit" ? "big" : "mid" })),
+    { gran: "month", from: Math.max(0, c.rowsU.debit.findIndex(x => x !== MISSING)) }));   // à partir de la première mesure de débit
+}
+// Vue d'ensemble : une ligne par chiffre, tous calculés à partir des données
+{
+  // Les cinq plus grands réseaux (par nombre d'affluents), du plus ramifié au moins ramifié
+  const big = rivers.filter(r => r.main).sort((a, b) => b.at - a.at).map(r => esc(riverName(r).replace(/^(La|Le|L')/, m => m.toLowerCase())));
+  $("vue-intro").innerHTML = `Cinq grands réseaux drainent la région : ${big.slice(0, -1).join(", ")} et ${big.at(-1)}.
+    Des crêtes des Vosges aux plaines de Champagne, des milliers de ruisseaux les alimentent.`;
+  const o = DATA.overview, f0 = v => nf0.format(v), longest = rivers[o.longest[2]], biggest = rivers[o.biggest[2]];
+  // Tous les affluents d'un cours d'eau (directs et indirects), sans lui
+  const tributaries = r => { const out = [], stack = [...childrenOf[r.i]]; while (stack.length) { const x = stack.pop(); out.push(x); stack.push(...childrenOf[x.i]); } return out; };
+  const tiles = [
+    { v: `${f0(o.km)} km`, t: "de cours d'eau, canaux et fossés", show: "all" },
+    { v: `${f0(o.longest[1])} km`, t: `${esc(cap(o.longest[0]))}, le plus long cours d'eau`, show: () => [longest] },
+    { v: f0(o.biggest[1]), t: `affluents pour ${esc(o.biggest[0])}`, show: () => tributaries(biggest) },
+    { v: f0(DATA.nStations), t: "stations de mesure", show: "stations" },
+  ];
+  // Couleurs des tuiles : des teintes claires de l'échelle du tableau (plasma), lisibles sur le noir
+  const colors = [0.62, 0.72, 0.82, 0.92].map(t => d3.interpolatePlasma(t));
+  const pathCache = new Map();
+  function vueHighlight(tile, color) {
+    bg.hlLayer.selectAll(".river-vue").remove(); cStatic.classList.remove("hl-all"); bg.stVue = null;
+    document.documentElement.style.setProperty("--hl", color || "transparent");
+    if (tile && bg.page === "vue") {
+      if (tile.show === "all") cStatic.classList.add("hl-all");
+      else if (tile.show === "stations") bg.stVue = stations;
+      else {
+        // Un seul tracé pour toute la liste, calculé une fois
+        if (!pathCache.has(tile)) pathCache.set(tile, tile.show().map(r => bg.path0(lines(r))).join(""));
+        bg.hlLayer.append("path").attr("class", "river-vue").attr("stroke-width", tile.show().length > 1 ? 1.4 : 3).attr("d", pathCache.get(tile));
+      }
+    }
+    placeLabels();
+  }
+  window.clearVueHighlight = () => vueHighlight(null);
+  $("stats").innerHTML = tiles.map((x, i) => `<li tabindex="0" style="--c:${colors[i]}"><b>${x.v}</b><span>${x.t}</span></li>`).join("");
+  $("stats").querySelectorAll("li").forEach((li, i) => {
+    const on = () => vueHighlight(tiles[i], colors[i]), off = () => vueHighlight(null);
+    li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off);
+    li.addEventListener("focus", on); li.addEventListener("blur", off);
+  });
+}
+
+// ================= Page 4 : ce que révèlent les données =================
+// Quatre tendances, une à la fois : un texte, un grand chiffre, un tableau figé sur la période qui compte.
+const OBS = (() => {
+  const o = DATA.obs, t = o.temp, s03 = o.summers["2003"], s22 = o.summers["2022"], sn = o.snow, b = o.balance;
+  const f1 = v => nf1.format(v), f2 = v => nf2(v), dg = v => `${f1(v)} °C`;
+  const deptsByName = [...depts].sort((a, c) => a.nom.localeCompare(c.nom, "fr"));
+  const rankRow = (label, values, c) => ({ label, values, c, cls: "mid" });
+  const since = sn.low5.filter(y => y >= 2020).length;
+  const winterName = y => `${y - 1}-${y}`;
+  const list = a => a.length > 1 ? `${a.slice(0, -1).join(", ")} et ${a.at(-1)}` : String(a[0]);   // « a, b et c »
+  return [
+    { tab: "Il fait plus chaud, partout", big: `+${f1(t.late - t.early)} °C`,
+      text: `<p>Entre 2000-2008 et 2017-2025, la température moyenne des stations passe de <b>${dg(t.early)}</b> à <b>${dg(t.late)}</b>.</p>
+        <p>Aucun des ${t.nDept} départements n'y échappe : de +${f1(t.gainMin)} à +${f1(t.gainMax)} °C. Les cinq années les plus chaudes sont toutes postérieures à ${Math.min(...t.hot5) - 1} : ${list(t.hot5)}, de la plus chaude à la moins chaude.</p>`,
+      cap: "Température, écart à la normale, année par année",
+      table: () => [rankRow("Grand Est", regionRows.temp, "temp"), ...deptsByName.map(d => rankRow(d.nom, d.rowsU.temp, "temp"))],
+      opts: { gran: "year" } },
+    { tab: "L'été 2022, pire que 2003", big: `${s22.low} %`,
+      text: `<p>L'été 2003 reste le plus chaud (${dg(s03.temp)} en moyenne en juillet-août). L'été 2022 l'est presque autant (${dg(s22.temp)}), mais ses sols sont bien plus secs : indice d'humidité ${f2(s22.soil)}, contre ${f2(s03.soil)}.</p>
+        <p>Résultat : <b>${s22.low} % des stations</b> ont eu un débit d'été parmi les 20 % les plus bas de leur histoire, contre ${s03.low} % en 2003.</p>`,
+      cap: "Grand Est, écart à la normale, mois par mois",
+      table: () => [rankRow("Température", regionRows.temp, "temp"), rankRow("Humidité du sol", regionRows.humidite, "humidite"), { label: "Débit", values: regionRows.debit, c: "debit", cls: "big" }],
+      opts: { gran: "month", marks: [{ from: s03.from, to: s03.to, label: "été 2003" }, { from: s22.from, to: s22.to, label: "été 2022" }] } },
+    { tab: "La neige se fait rare", big: `${nf0.format(sn.pct).replace("-", "−")} %`,
+      text: `<p>De décembre à mars, il tombait en moyenne <b>${sn.early} mm</b> de neige par station au début des années 2000 (hivers 2001 à 2009). Sur les hivers 2018 à 2026, plus que <b>${sn.late} mm</b>.</p>
+        <p>${since === 5 ? "Les cinq" : since === 4 ? "Quatre des cinq" : since === 3 ? "Trois des cinq" : `${since} des cinq`} hivers les moins enneigés sont récents : ${list(sn.low5.filter(y => y >= 2020).sort().map(winterName))}.</p>`,
+      cap: "Neige tombée, valeurs mesurées, année par année (couleur propre à chaque ligne)",
+      table: () => [{ label: "Grand Est", values: measured(DATA.regionRaw, "region", "neige"), c: "neige", cls: "mid" },
+        ...["88", "68", "67"].map(code => deptByCode[code]).filter(Boolean).map(d => ({ label: d.nom, values: measured(d, "d" + d.code, "neige"), c: "neige", cls: "mid" }))],
+      opts: { gran: "year" } },
+    { tab: "Du très sec au très humide", big: `${b["2022"].below} → ${b["2024"].above}`,
+      text: `<p>En 2022, il tombe ${nf0.format(b["2022"].rain)} mm de pluie : <b>${b["2022"].below} stations sur ${b["2022"].n}</b> coulent sous leur normale sur l'année.</p>
+        <p>Deux ans plus tard, en 2024, ${nf0.format(b["2024"].rain)} mm : <b>${b["2024"].above === b["2024"].n ? "toutes" : b["2024"].above} les ${b["2024"].n} stations</b> coulent au-dessus.</p>`,
+      cap: "Grand Est, écart à la normale, mois par mois, de 2021 à 2025",
+      table: () => [rankRow("Pluie", regionRows.pluie, "pluie"), rankRow("Humidité du sol", regionRows.humidite, "humidite"), { label: "Débit", values: regionRows.debit, c: "debit", cls: "big" }],
+      opts: { gran: "month", from: b["2021"].from, to: b["2025"].to, marks: [{ from: b["2022"].from, to: b["2022"].to, label: "2022" }, { from: b["2024"].from, to: b["2024"].to, label: "2024" }] } },
+  ];
+})();
+// Les quatre tendances, l'une sous l'autre ; les points suivent celle qui occupe le milieu de l'écran
+$("obs-items").innerHTML = OBS.map((x, i) => `
+  <article class="obs-item" id="obs-${i}">
+    <p class="big">${x.big}</p>
+    <h3>${esc(x.tab)}</h3>
+    ${x.text}
+    <p class="obs-cap">${esc(x.cap)}</p>
+    <div class="tbl obs-tbl" id="obs-tbl-${i}"></div>
+  </article>`).join("");
+function drawObsTables() { OBS.forEach((x, i) => table($("obs-tbl-" + i), x.table(), x.opts)); }
+$("obs-dots").innerHTML = OBS.map(x => `<button type="button" aria-label="${esc(x.tab)}"></button>`).join("");
+$("obs-dots").querySelectorAll("button").forEach((d, i) => d.addEventListener("click", () => $("obs-" + i).scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" })));
+function obsFromScroll() {
+  const mid = innerHeight / 2, sec = $("obs"), r = sec.getBoundingClientRect();
+  let cur = 0;
+  OBS.forEach((x, i) => { if ($("obs-" + i).getBoundingClientRect().top < mid) cur = i; });
+  $("obs-dots").querySelectorAll("button").forEach((d, i) => d.setAttribute("aria-current", i === cur));
+  // « in » : la page occupe l'écran ; « done » : la dernière tendance est arrivée (le titre s'en va, le texte du bas arrive)
+  sec.classList.toggle("in", r.top < mid && r.bottom > mid);
+  sec.classList.toggle("done", cur === OBS.length - 1);
+  // Les tendances s'effacent avant de passer sous le titre collé en haut (fondu sur 90 px, élément par élément)
+  const limit = sec.classList.contains("done") ? -Infinity : document.querySelector("#obs .obs-head").getBoundingClientRect().bottom;
+  document.querySelectorAll("#obs .obs-item > :not(.obs-tbl), #obs .obs-tbl > *").forEach(el => {   // les tableaux, ligne par ligne
+    el.style.opacity = limit === -Infinity ? "" : clamp01((el.getBoundingClientRect().top - limit) / 90);
+  });
+}
+
+// ================= Voiles : le flou derrière les textes suit le défilement =================
+const clamp01 = v => Math.max(0, Math.min(1, v));
+// Un voile par cas, flou du côté de son texte (bord adouci du côté de la carte)
+const caseVeils = cases.map(c => {
+  const v = document.createElement("div");
+  v.className = "veil " + (POS[c.idx % POS.length][0] === "l" ? "fade-r" : "fade-l");
+  $("veils").appendChild(v);
+  return v;
+});
+function setVeil(el, op, x, w, top = 0) {
+  el.style.opacity = op; el.style.visibility = op > 0.002 ? "visible" : "hidden";
+  if (op > 0.002) { el.style.left = x + "px"; el.style.width = Math.max(0, w) + "px"; el.style.top = top + "px"; }
+}
+function updateVeils() {
+  const W = innerWidth, H = innerHeight, mob = isMobile();
+  // Page 1 : d'un peu avant le texte jusqu'au bord droit (tout l'écran sur mobile), qui se défloute en descendant
+  const x1 = mob ? 0 : Math.max(0, document.querySelector("#p1 .intro").getBoundingClientRect().left - 56);
+  setVeil($("veil-p1"), clamp01(1 - scrollY / (0.8 * H)), x1, W - x1);
+  // Page 3 : d'un peu avant le texte et le tableau jusqu'au bord droit
+  const p2 = $("p2").getBoundingClientRect(), rb = document.querySelector("#p2 .right").getBoundingClientRect();
+  const x2 = mob ? 0 : Math.max(0, rb.left - 56);
+  setVeil($("veil-p2"), clamp01((H - p2.top) / (0.7 * H)) * clamp01((p2.bottom - 0.25 * H) / (0.5 * H)), x2, W - x2, mob ? Math.max(0, rb.top - 20) : 0);
+  // Page 4 : tout l'écran ; le flou arrive depuis la page 3 et repart vers les cinq cas
+  const o = $("obs").getBoundingClientRect();
+  setVeil($("veil-obs"), clamp01((H - o.top) / H) * clamp01(o.bottom / H), 0, W);
+  // Conclusion : tout l'écran, qui se floute en arrivant
+  setVeil($("veil-outro"), clamp01((H - $("outro").getBoundingClientRect().top) / H), 0, W);
+  // Cinq cas : de l'écran jusqu'un peu au-delà du texte et du graphique
+  cases.forEach((c, i) => {
+    const sec = $("c" + c.idx), r = sec.getBoundingClientRect(), b = sec.querySelector(".card").getBoundingClientRect();
+    const op = clamp01((H - r.top) / (0.7 * H)) * clamp01((r.bottom - 0.25 * H) / (0.5 * H));
+    const left = POS[c.idx % POS.length][0] === "l", pad = 56;
+    const x0 = mob || left ? 0 : Math.max(0, b.left - pad), x1 = mob || !left ? W : Math.min(W, b.right + pad);
+    setVeil(caseVeils[i], op, x0, x1 - x0, mob ? Math.max(0, b.top - 20) : 0);
+  });
+}
+
+// Calques des cas : leur hauteur dépend du texte et du graphique. Un calque qui dépasserait du bas
+// de l'écran remonte, en laissant la place de la flèche (environ 90 px).
+function fitCards() {
+  document.querySelectorAll(".step .card").forEach(card => {
+    card.style.top = "";
+    const top = parseFloat(getComputedStyle(card).top) || 0, room = innerHeight - 90;
+    if (top + card.offsetHeight > room) card.style.top = Math.max(16, room - card.offsetHeight) + "px";
+  });
+}
+// Zone de l'écran laissée à la carte sur la page d'un cas (du côté opposé au calque de texte)
+function caseRect(c) {
+  const { W, H } = bg, m = 40, pos = POS[c.idx % POS.length];
+  const card = 430 + 2 * Math.max(22, W * 0.03);
+  return isMobile() ? [m, m, W - m, H * 0.48] : pos[0] === "l" ? [card, m, W - m, H - m] : [m, m, W - card, H - m];
+}
+// Vue d'un cas : le cours d'eau dans la partie de l'écran que le calque ne couvre pas
+function caseView(c) {
+  const r = riverByC[c.c], rect = caseRect(c);
+  // Zoom modéré : le cours d'eau garde de la marge autour de lui, pour rester situé
+  if (!r) return fitView(region, rect);
+  const [[x0, y0], [x1, y1]] = bg.path0.bounds(lines(r)), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const half = Math.max(x1 - x0, y1 - y0, bg.H * 0.12) * 1.25;   // zoom d'environ 3 sur les petits cours d'eau
+  const box = { type: "MultiPoint", coordinates: [bg.P0.invert([cx - half, cy - half]), bg.P0.invert([cx + half, cy + half])] };
+  return fitView(box, rect, 5);
+}
+
+
+// ================= Défilement : quelle étape est active =================
+function enter(id) {
+  bg.page = id;
+  bg.stHover = null;
+  if (id !== "vue" && window.clearVueHighlight) clearVueHighlight();
+  front.classed("explore", id === "p2").classed("no-click", clicksOff());
+  const step = id.startsWith("c") ? +id.slice(1) : -1, nextBtn = $("next-step");
+  nextBtn.hidden = step < 0;
+  if (step >= 0) {
+    nextBtn.className = "next-step side-r";
+    nextBtn.dataset.to = step + 1 < cases.length ? "c" + (step + 1) : "outro";
+    nextBtn.setAttribute("aria-label", step + 1 < cases.length ? "Cours d'eau suivant" : "Conclusion");
+  }
+  if (id === "p1" || id === "vue" || id === "p2" || id === "obs" || id === "outro") {
+    bg.mode = "region";
+    front.style("pointer-events", null); bg.frontWorld.style("pointer-events", null);
+    if (id === "outro") { sel = { dept: null, river: null }; hovered = null; }
+    regionMapState();
+    flyTo(...pageView(id));
+    return;
+  }
+  const c = cases[+$(id).dataset.case], r = riverByC[c.c];
+  bg.mode = "case";
+  bg.stHL = [];
+  $("st-legend").hidden = true;
+  bg.frontWorld.style("pointer-events", "none");
+  setFocus(null, r ? [r] : [], c);
+  setFlow(r ? riverNetwork(r) : []);   // le cours d'eau et ses affluents
+  flyTo(caseView(c), caseRect(c));
+}
+const observed = ["p1", "vue", "p2", "obs", ...cases.map((c, i) => "c" + i), "outro"];
+let active = null;
+function updateActive() {
+  const mid = innerHeight * 0.5;
+  let best = null;
+  for (const id of observed) { const b = $(id).getBoundingClientRect(); if (b.top <= mid && b.bottom > mid) best = id; }
+  if (best && best !== active) { active = best; enter(best); }
+}
+let ticking = false;
+addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; updateActive(); obsFromScroll(); updateVeils(); }); } }, { passive: true });
+
+// ================= Mise en route =================
+$("desel").addEventListener("click", selectRegion);
+document.addEventListener("click", e => { const b = e.target.closest("[data-to]"); if (b) go(b.dataset.to); });
+setupMap();
+bg.T = fullView(); applyView(bg.T, true);
+setFlow([]);
+updateExplore();
+drawCaseTables();
+drawObsTables();
+obsFromScroll();
+fitCards();
+updateVeils();
+if (document.fonts) document.fonts.ready.then(() => { fitCards(); updateVeils(); });   // la police change la hauteur des calques
+updateActive();
+requestAnimationFrame(tick);
+let resizeTimer;
+addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    setupMap();
+    const c = active && active.startsWith("c") ? cases[+$(active).dataset.case] : null;
+    applyView(c ? caseView(c) : pageView(active)[0], true);
+    setFlow(bg.flowRivers || main5);
+    updateExplore(); drawCaseTables(); drawObsTables(); fitCards(); updateVeils();
+  }, 150);
+});
+</script>

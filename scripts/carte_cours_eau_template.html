@@ -1,0 +1,462 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cours d'eau du Grand Est</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Un élément masqué reste masqué, même si une règle lui donne un « display » */
+[hidden] { display: none !important; }
+/* Layout : panneau plat à gauche (bandeau vert en tête), carte sur fond de tuiles claires.
+   Mode clair uniquement, design plat : aplats de couleur, ni ombre ni dégradé. */
+:root {
+  color-scheme: light;
+  --green-dark: #426a5a;
+  --green: #7fb685;
+  --sand: #f2c57c;
+  --tan: #ddae7e;
+  --coral: #ef6f6c;
+  --ink: #23302b;
+  --ink-2: #66736d;
+  --bg: #ffffff;
+  --soft: #f3f1eb;
+  --rule: #e7e3da;
+  --map-bg: #f2f2ef;
+  --sel: #1d2420;
+  /* Virages par km, du plus calme au plus sinueux */
+  --v1: var(--green-dark); --v2: var(--green); --v3: var(--sand); --v4: var(--coral);
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --s-xs: 11.5px; --s-sm: 12.5px; --s-md: 13.5px; --s-lg: 18px;
+}
+
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 var(--s-md)/1.45 var(--font); }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--green-dark); outline-offset: 1px; }
+
+.app { display: grid; grid-template-columns: 310px 1fr; height: 100%; }
+.panel { overflow-y: auto; background: var(--bg); display: flex; flex-direction: column; }
+.panel > header { background: var(--green-dark); color: #fff; padding-block: 18px 16px; padding-inline: 18px; }
+.panel > section { padding-block: 16px; padding-inline: 18px; border-bottom: 1px solid var(--rule); }
+#map { height: 100%; background: var(--map-bg); }
+
+h1 { font-size: var(--s-lg); font-weight: 600; margin: 0; letter-spacing: -.005em; }
+.sub { margin: 4px 0 0; font-size: var(--s-sm); color: rgba(255, 255, 255, .78); font-variant-numeric: tabular-nums; }
+h2 { font-size: var(--s-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); margin: 0 0 10px; }
+.muted { color: var(--ink-2); }
+
+input[type="search"], select { width: 100%; padding: 8px 10px; border: 0; border-radius: 2px; background: var(--soft); }
+input[type="search"]::placeholder { color: var(--ink-2); }
+.list { list-style: none; margin: 6px 0 0; padding: 0; }
+.list:empty { display: none; }
+.row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 6px; margin-inline: -6px; width: calc(100% + 12px);
+  border: 0; border-radius: 2px; background: none; text-align: left; cursor: pointer; }
+.row:hover { background: var(--soft); }
+.row .rk { color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: right; flex: none; }
+.row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .val { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hint { font-size: var(--s-sm); color: var(--ink-2); margin: 6px 0 0; }
+
+#sel { background: var(--soft); }
+.sel-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.sel-name { font-size: 16px; font-weight: 600; margin: 0; }
+.x { border: 0; background: none; cursor: pointer; color: var(--ink-2); font-size: 18px; line-height: 1; padding: 0 2px; }
+.x:hover { color: var(--ink); }
+dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 10px 0 0; font-size: var(--s-sm); }
+dl.kv dt { color: var(--ink-2); }
+dl.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.link { border: 0; padding: 0; background: none; color: var(--green-dark); font-weight: 500; cursor: pointer; text-align: right; text-decoration: underline; text-underline-offset: 2px; }
+details.aff { margin-top: 10px; font-size: var(--s-sm); }
+details.aff summary { cursor: pointer; color: var(--green-dark); font-weight: 500; }
+details.aff .list { max-height: 220px; overflow-y: auto; padding-inline: 6px; margin-inline: -6px; }
+details.aff .row:hover { background: var(--bg); }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 6px; font-size: var(--s-sm); cursor: pointer; background: var(--soft); color: var(--ink-2); border-radius: 2px; }
+.seg input:checked + label { background: var(--green-dark); color: #fff; font-weight: 500; }
+.seg input:focus-visible + label { outline: 2px solid var(--green-dark); outline-offset: 1px; }
+.ramp { margin-top: 12px; }
+.ramp-bar, .ramp-lbl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+.ramp-bar span { height: 8px; }
+.ramp-lbl { margin-top: 4px; font-size: var(--s-xs); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ramp-cap { font-size: var(--s-xs); color: var(--ink-2); margin: 6px 0 0; }
+
+.cats { display: flex; flex-direction: column; gap: 2px; }
+.cat { display: flex; align-items: center; gap: 8px; padding: 2px 0; cursor: pointer; }
+.cat input { margin: 0; accent-color: var(--green-dark); }
+.cat span:first-of-type { flex: 1; }
+.cat .val { color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: var(--s-sm); }
+
+.rank-ctl { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
+.rank-ctl select:last-child { width: auto; }
+.rank-count { font-size: var(--s-xs); color: var(--ink-2); margin: 8px 0 0; }
+.rank-list { max-height: 50vh; overflow-y: auto; margin-top: 4px; padding-inline: 6px; margin-inline: -6px; }
+
+.foot { padding-block: 14px 18px; padding-inline: 18px; font-size: var(--s-xs); color: var(--ink-2); line-height: 1.5; margin: 0; }
+
+/* Leaflet : feuille de style minimale (seul le script est chargé depuis le CDN) */
+.leaflet-pane, .leaflet-tile, .leaflet-marker-icon, .leaflet-tile-container, .leaflet-pane > svg, .leaflet-pane > canvas, .leaflet-zoom-box, .leaflet-layer { position: absolute; left: 0; top: 0; }
+.leaflet-container { overflow: hidden; -webkit-tap-highlight-color: transparent; font-family: var(--font); outline-offset: -2px; }
+.leaflet-container img.leaflet-tile { max-width: none !important; max-height: none !important; width: 256px; height: 256px; padding: 0; border: 0; }
+.leaflet-tile { user-select: none; visibility: hidden; }
+.leaflet-tile-loaded { visibility: inherit; }
+.leaflet-tile-container { pointer-events: none; }
+.leaflet-container.leaflet-touch-zoom { touch-action: pan-x pan-y; }
+.leaflet-container.leaflet-touch-drag { touch-action: pinch-zoom; }
+.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom { touch-action: none; }
+.leaflet-pane { z-index: 400; }
+.leaflet-tile-pane { z-index: 200; }
+.leaflet-overlay-pane { z-index: 400; }
+.leaflet-marker-pane { z-index: 600; }
+.leaflet-tooltip-pane { z-index: 650; }
+.leaflet-map-pane canvas { z-index: 100; }
+.leaflet-zoom-animated { transform-origin: 0 0; }
+.leaflet-zoom-anim .leaflet-zoom-animated { transition: transform .25s cubic-bezier(0, 0, .25, 1); }
+.leaflet-zoom-anim .leaflet-zoom-hide { visibility: hidden; }
+.leaflet-fade-anim .leaflet-tile { will-change: opacity; }
+.leaflet-interactive { cursor: pointer; }
+.leaflet-grab { cursor: grab; }
+.leaflet-dragging .leaflet-grab { cursor: grabbing; }
+.leaflet-marker-icon { pointer-events: none; }
+.leaflet-top, .leaflet-bottom { position: absolute; z-index: 1000; pointer-events: none; }
+.leaflet-top { top: 0; } .leaflet-right { right: 0; } .leaflet-bottom { bottom: 0; } .leaflet-left { left: 0; }
+.leaflet-control { position: relative; z-index: 800; pointer-events: auto; float: left; clear: both; }
+.leaflet-right .leaflet-control { float: right; margin-right: 10px; }
+.leaflet-top .leaflet-control { margin-top: 10px; }
+.leaflet-bottom .leaflet-control { margin-bottom: 8px; }
+.leaflet-left .leaflet-control { margin-left: 10px; }
+.leaflet-zoom-box { border: 1px dashed var(--green-dark); }
+.leaflet-control-zoom { display: flex; flex-direction: column; gap: 2px; }
+.leaflet-control-zoom a { width: 30px; height: 30px; display: grid; place-items: center; color: #fff; background: var(--green-dark); text-decoration: none; font-size: 17px; line-height: 1; border-radius: 2px; }
+.leaflet-control-zoom a:hover { background: var(--ink); }
+.leaflet-control-zoom a.leaflet-disabled { opacity: .4; cursor: default; }
+.leaflet-control-scale-line { border: 1px solid var(--ink-2); border-top: 0; padding: 0 4px; font-size: var(--s-xs); color: var(--ink); background: rgba(255, 255, 255, .7); }
+.leaflet-bottom.leaflet-right .leaflet-control-attribution { margin: 0; clear: none; }
+.leaflet-control-attribution { background: rgba(255, 255, 255, .8); padding: 0 5px; font-size: 10.5px; color: var(--ink-2); }
+.leaflet-control-attribution a { color: var(--ink-2); }
+.leaflet-tooltip { position: absolute; pointer-events: none; white-space: nowrap; background: var(--ink); color: #fff;
+  border-radius: 2px; padding: 5px 8px; font-size: var(--s-sm); }
+.leaflet-tooltip b { font-weight: 600; }
+.leaflet-tooltip .muted { color: rgba(255, 255, 255, .72); }
+
+@media (max-width: 760px) {
+  html, body { height: auto; }
+  .app { grid-template-columns: 1fr; height: auto; }
+  #map { height: 60vh; order: -1; }
+  .panel { overflow: visible; }
+  .panel > header, .panel > section, .foot { padding-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; }
+}
+</style>
+
+<div class="app">
+  <aside class="panel">
+    <header>
+      <h1>Cours d'eau du Grand Est</h1>
+      <p class="sub" id="sub"></p>
+    </header>
+
+    <section>
+      <input id="q" type="search" autocomplete="off" placeholder="Rechercher un cours d'eau" aria-label="Rechercher un cours d'eau" spellcheck="false">
+      <ul class="list" id="results"></ul>
+      <p class="hint" id="hint" hidden></p>
+    </section>
+
+    <section id="sel" hidden aria-live="polite">
+      <div class="sel-head">
+        <div>
+          <p class="sel-name" id="sel-name"></p>
+          <span class="muted" id="sel-type"></span>
+        </div>
+        <button class="x" id="sel-close" type="button" aria-label="Fermer la fiche">×</button>
+      </div>
+      <dl class="kv">
+        <dt>Longueur</dt><dd id="sel-km"></dd>
+        <dt>Virages</dt><dd id="sel-v"></dd>
+        <dt>Virages par km</dt><dd id="sel-vk"></dd>
+        <dt>Sinuosité</dt><dd id="sel-si"></dd>
+        <dt>Se jette dans</dt><dd id="sel-p"></dd>
+        <dt>Affluents directs</dt><dd id="sel-a"></dd>
+        <dt>Affluents au total</dt><dd id="sel-at"></dd>
+        <dt>Code</dt><dd id="sel-code"></dd>
+      </dl>
+      <details class="aff" id="sel-aff">
+        <summary id="sel-aff-sum"></summary>
+        <ul class="list" id="sel-aff-list"></ul>
+      </details>
+    </section>
+
+    <section>
+      <h2>Couleur des tracés</h2>
+      <div class="seg" role="radiogroup" aria-label="Couleur des tracés">
+        <input type="radio" name="mode" id="mode-v" value="virages" checked><label for="mode-v">Virages par km</label>
+        <input type="radio" name="mode" id="mode-u" value="uniforme"><label for="mode-u">Uniforme</label>
+      </div>
+      <div class="ramp" id="ramp">
+        <div class="ramp-bar" id="ramp-bar"></div>
+        <div class="ramp-lbl" id="ramp-lbl"></div>
+        <p class="ramp-cap">Chaque classe regroupe environ un quart du linéaire.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Types</h2>
+      <div class="cats" id="cats"></div>
+    </section>
+
+    <section>
+      <h2>Classement</h2>
+      <div class="rank-ctl">
+        <select id="rank" aria-label="Critère de classement">
+          <option value="v">Nombre de virages</option>
+          <option value="vk">Virages par km</option>
+          <option value="a">Affluents directs</option>
+          <option value="at">Affluents au total</option>
+          <option value="k">Longueur</option>
+        </select>
+        <select id="minkm" aria-label="Longueur minimale">
+          <option value="0">Toutes</option>
+          <option value="1">≥ 1 km</option>
+          <option value="5">≥ 5 km</option>
+          <option value="20">≥ 20 km</option>
+        </select>
+      </div>
+      <p class="rank-count" id="rank-count"></p>
+      <ol class="list rank-list" id="top"></ol>
+    </section>
+
+    <p class="foot">Source : cours-eau-region (BD TOPAGE, Sandre / IGN). Un virage est un tournant d'au moins 45° d'un même côté ; il s'arrête quand le cours d'eau change de côté ou rencontre une ligne droite. Mesure faite sur le tracé simplifié à 10&nbsp;m, où une ligne droite est reconnue à partir d'environ 150&nbsp;m. Un affluent est un cours d'eau dont l'embouchure se trouve sur le tracé d'un autre ; le total compte aussi les affluents des affluents. Les embouchures situées hors de la région ne sont pas connues. Le type est déduit du nom. Les cours d'eau de 20&nbsp;km et plus sont dessinés avec Leaflet.River : ils s'élargissent de la source à l'embouchure, d'autant plus que leur réseau d'affluents est grand. Fond de carte <span id="basemap-credit"></span>.</p>
+  </aside>
+  <div id="map" aria-label="Carte des cours d'eau"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-river@1.0.1/dist/Leaflet.river.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+
+const CATS = [
+  { id: "riviere",  label: "Rivières et fleuves" },
+  { id: "ruisseau", label: "Ruisseaux" },
+  { id: "bras",     label: "Bras et noues" },
+  { id: "canal",    label: "Canaux et rigoles" },
+  { id: "fosse",    label: "Fossés" },
+  { id: "autre",    label: "Autres et sans nom" },
+];
+const CAT = Object.fromEntries(CATS.map(c => [c.id, c]));
+// Bornes des classes de virages par km (quartiles du linéaire)
+const BREAKS = [1.2, 2.2, 3.6];
+const CLASS_LBL = ["< 1,2", "1,2–2,2", "2,2–3,6", "≥ 3,6"];
+
+const nf0 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const kmTxt = k => (k >= 10 ? nf0.format(k) : nf1.format(k)) + " km";
+const vClass = vk => { const i = BREAKS.findIndex(b => vk < b); return i === -1 ? BREAKS.length : i; };
+const plural = (n, w) => `${nf0.format(n)} ${w}${n > 1 ? "s" : ""}`;
+
+function decode(arr) {
+  const out = []; let x = 0, y = 0;
+  for (let i = 0; i < arr.length; i += 2) { x += arr[i]; y += arr[i + 1]; out.push([y / DATA.q, x / DATA.q]); }
+  return out;
+}
+
+// Couleurs lues une fois dans les tokens CSS
+const css = getComputedStyle(document.documentElement);
+const tok = k => css.getPropertyValue("--" + k).trim();
+const COL = { line: tok("green-dark"), dept: tok("tan"), sel: tok("sel"), v: [1, 2, 3, 4].map(i => tok("v" + i)) };
+
+let hl = null;            // tracés de surlignage de la sélection
+let mode = "virages";
+
+const rivers = DATA.rivers.map((r, i) => ({ v: 0, vk: 0, si: 1, a: 0, at: 0, ...r, i, lines: r.g.map(decode), name: r.n || "Sans nom" }));
+rivers.forEach(r => (r.cls = vClass(r.vk)));
+const children = rivers.map(() => []);
+rivers.forEach(r => { if (r.p !== undefined) children[r.p].push(r); });
+$("sub").textContent = `${nf0.format(rivers.length)} tronçons · ${nf0.format(rivers.reduce((s, r) => s + r.k, 0))} km · ${nf0.format(rivers.reduce((s, r) => s + r.v, 0))} virages`;
+
+// Carte
+// Un seul canevas pour tous les cours d'eau : Leaflet.River y dessine aussi ses segments
+const riverRenderer = L.canvas({ padding: 0.5, tolerance: 4 });
+const map = L.map("map", { zoomSnap: 0.25, zoomControl: false, renderer: riverRenderer, minZoom: 6, maxZoom: 15 });
+map.attributionControl.setPrefix(false);
+// Fond de carte choisi à la génération : style Mapbox si un jeton est fourni, sinon CARTO
+const BASEMAP = /*__BASEMAP__*/null;
+L.tileLayer(BASEMAP.url, BASEMAP.options).addTo(map);
+document.getElementById("basemap-credit").textContent = BASEMAP.credit;
+L.control.zoom({ position: "topright", zoomInTitle: "Zoomer", zoomOutTitle: "Dézoomer" }).addTo(map);
+L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
+
+map.createPane("dept").style.zIndex = 300;
+map.getPane("dept").style.pointerEvents = "none";
+map.createPane("hl").style.zIndex = 450;
+const deptRenderer = L.canvas({ pane: "dept", padding: 0.5 });
+const hlRenderer = L.canvas({ pane: "hl", padding: 0.5 });
+
+// Voile blanc hors région, puis limites départementales
+const world = [[-89, -179], [-89, 179], [89, 179], [89, -179]];
+L.polygon([world, ...DATA.region.map(decode)], { renderer: deptRenderer, interactive: false, stroke: false, fillColor: "#ffffff", fillOpacity: 0.55 }).addTo(map);
+const deptLayers = DATA.depts.map(d => L.polygon(d.g.map(decode), {
+  renderer: deptRenderer, interactive: false, fill: false, color: COL.dept, weight: 1.2,
+}).addTo(map));
+
+const zoomFactor = z => (z < 7.5 ? 0.85 : z < 9 ? 1 : z < 10 ? 1.3 : z < 11 ? 1.6 : 2);
+function weight(r, z) {
+  const base = r.k >= 10 ? 1.25 : 0.9;
+  return base * zoomFactor(z);
+}
+const color = r => (mode === "virages" ? COL.v[r.cls] : COL.line);
+
+// Leaflet.River : largeur croissante de la source à l'embouchure. Le plugin ne gère pas
+// les tracés en plusieurs parties : chaque partie (rangée de l'amont vers l'aval) reçoit
+// la tranche de largeur qui correspond à sa position le long de la rivière (r.rp).
+function taperedRiver(lines, rp) {
+  const parts = lines.map(ll => L.river(ll, { minWidth: 1, maxWidth: 1 }));
+  const group = L.featureGroup(parts);
+  group.setRiverStyle = ({ color, minW, maxW }) => parts.forEach((part, j) => {
+    const [p0, p1] = rp[j];
+    const o = { color, opacity: 1, minWidth: minW + (maxW - minW) * p0, maxWidth: minW + (maxW - minW) * p1 };
+    part._map ? part.setStyle(o) : L.setOptions(part, o);   // setStyle du plugin exige la carte
+  });
+  return group;
+}
+const maxAt = Math.max(...rivers.filter(r => r.rp).map(r => r.at));
+function widths(r, z, extra = 0) {
+  const f = Math.min(zoomFactor(z), 1.5);
+  return { minW: 0.6 * f, maxW: (1.2 + 2.8 * Math.sqrt(r.at / maxAt)) * f + extra };
+}
+function styleRiver(r, hover = false) {
+  const z = map.getZoom();
+  if (r.rp) r.layer.setRiverStyle({ color: color(r), ...widths(r, z, hover ? 1.5 : 0) });
+  else r.layer.setStyle({ color: color(r), weight: weight(r, z) + (hover ? 1.5 : 0), opacity: 1 });
+}
+
+const groups = Object.fromEntries(CATS.map(c => [c.id, L.layerGroup().addTo(map)]));
+// Petits cours d'eau d'abord, grandes rivières dessinées par-dessus
+[...rivers].sort((a, b) => a.k - b.k).forEach(r => {
+  r.layer = r.rp ? taperedRiver(r.lines, r.rp) : L.polyline(r.lines, { lineCap: "round", lineJoin: "round" });
+  r.layer.bindTooltip(() => `<b>${esc(r.name)}</b><br><span class="muted">${kmTxt(r.k)} · ${plural(r.v, "virage")} · ${plural(r.a, "affluent")}</span>`,
+    { sticky: true, direction: "top", offset: [0, -8] });
+  r.layer.on("mouseover", () => styleRiver(r, true));
+  r.layer.on("mouseout", () => styleRiver(r));
+  r.layer.on("click", e => { L.DomEvent.stop(e); select(r, false); });
+  groups[r.t].addLayer(r.layer);
+});
+
+function styleAll() { rivers.forEach(r => styleRiver(r)); }
+
+const regionBounds = L.latLngBounds(deptLayers.map(l => l.getBounds()));
+map.fitBounds(regionBounds, { padding: [10, 10] });
+map.setMaxBounds(regionBounds.pad(0.6));
+styleAll();
+map.on("zoomend", styleAll);
+map.on("click", () => clearSelection());
+
+// Sélection
+function select(r, fly = true) {
+  clearHighlight();
+  const opt = { renderer: hlRenderer, interactive: false, lineCap: "round", lineJoin: "round" };
+  hl = [L.polyline(r.lines, { ...opt, color: "#ffffff", weight: 8 }), L.polyline(r.lines, { ...opt, color: COL.sel, weight: 3 })];
+  hl.forEach(l => l.addTo(map));
+  if (fly) map.flyToBounds(r.layer.getBounds(), { padding: [40, 40], maxZoom: 13, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.8 });
+  $("sel-name").textContent = r.name;
+  $("sel-type").textContent = CAT[r.t].label;
+  $("sel-km").textContent = nf1.format(r.k) + " km" + (r.lines.length > 1 ? ` (${r.lines.length} parties)` : "");
+  $("sel-v").textContent = nf0.format(r.v);
+  $("sel-vk").textContent = nf2.format(r.vk);
+  $("sel-si").textContent = nf2.format(r.si);
+  $("sel-code").textContent = r.c || "—";
+  const recv = r.p !== undefined ? rivers[r.p] : null;
+  $("sel-p").innerHTML = recv ? `<button class="link" type="button" data-i="${recv.i}">${esc(recv.name)}</button>` : '<span class="muted">non connu</span>';
+  $("sel-a").textContent = nf0.format(r.a);
+  $("sel-at").textContent = nf0.format(r.at);
+  const kids = [...children[r.i]].sort((a, b) => b.k - a.k);
+  $("sel-aff").hidden = !kids.length;
+  $("sel-aff").open = false;
+  $("sel-aff-sum").textContent = `Voir ${kids.length > 1 ? "les " + kids.length + " affluents directs" : "l'affluent direct"}`;
+  $("sel-aff-list").innerHTML = kids.map(k => rowHTML(k, kmTxt(k.k))).join("");
+  $("sel").hidden = false;
+}
+function clearHighlight() { if (hl) hl.forEach(l => l.remove()); hl = null; }
+function clearSelection() { clearHighlight(); $("sel").hidden = true; }
+$("sel-close").addEventListener("click", clearSelection);
+
+function rowHTML(r, val, rank) {
+  return `<li><button class="row" type="button" data-i="${r.i}">${rank ? `<span class="rk">${rank}</span>` : ""}<span class="nm">${esc(r.name)}</span><span class="val">${val}</span></button></li>`;
+}
+// Un seul écouteur par liste : tout bouton portant data-i sélectionne ce cours d'eau
+function openRiver(e) {
+  const b = e.target.closest("button[data-i]");
+  if (!b) return;
+  const r = rivers[+b.dataset.i];
+  if (!map.hasLayer(groups[r.t])) toggleCat(r.t, true);
+  select(r);
+}
+["results", "top", "sel-aff-list", "sel-p"].forEach(id => $(id).addEventListener("click", openRiver));
+
+// Recherche
+const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+rivers.forEach(r => (r.key = norm(r.name)));
+$("q").addEventListener("input", e => {
+  const q = norm(e.target.value.trim()), ul = $("results"), hint = $("hint");
+  ul.innerHTML = "";
+  if (q.length < 2) { hint.hidden = true; return; }
+  const hits = rivers.filter(r => r.key.includes(q)).sort((a, b) => (b.key.startsWith(q) - a.key.startsWith(q)) || b.k - a.k);
+  ul.innerHTML = hits.slice(0, 8).map(r => rowHTML(r, kmTxt(r.k))).join("");
+  hint.hidden = hits.length > 0 && hits.length <= 8;
+  hint.textContent = hits.length ? `${nf0.format(hits.length)} résultats, les 8 plus longs sont affichés.` : "Aucun résultat. Essayez une partie du nom, sans article.";
+});
+$("q").addEventListener("keydown", e => {
+  if (e.key === "Enter") { const b = $("results").querySelector("button"); if (b) b.click(); }
+  if (e.key === "Escape") { e.target.value = ""; e.target.dispatchEvent(new Event("input")); }
+});
+
+// Mode de couleur et légende
+CLASS_LBL.forEach((t, i) => {
+  $("ramp-bar").insertAdjacentHTML("beforeend", `<span style="background: var(--v${i + 1})"></span>`);
+  $("ramp-lbl").insertAdjacentHTML("beforeend", `<span>${t}</span>`);
+});
+document.querySelectorAll('input[name="mode"]').forEach(inp => inp.addEventListener("change", e => {
+  mode = e.target.value;
+  $("ramp").hidden = mode !== "virages";
+  styleAll();
+}));
+
+// Filtres par type
+const counts = Object.fromEntries(CATS.map(c => [c.id, 0]));
+rivers.forEach(r => counts[r.t]++);
+CATS.forEach(c => {
+  $("cats").insertAdjacentHTML("beforeend",
+    `<label class="cat"><input type="checkbox" id="cat-${c.id}" checked><span>${c.label}</span><span class="val">${nf0.format(counts[c.id])}</span></label>`);
+  $("cat-" + c.id).addEventListener("change", e => toggleCat(c.id, e.target.checked));
+});
+function toggleCat(id, on) {
+  on ? groups[id].addTo(map) : groups[id].remove();
+  $("cat-" + id).checked = on;
+}
+
+// Classement complet
+const RANKS = {
+  v:  { key: r => r.v,  fmt: r => plural(r.v, "virage") },
+  vk: { key: r => r.vk, fmt: r => `${nf2.format(r.vk)} / km` },
+  a:  { key: r => r.a,  fmt: r => plural(r.a, "affluent") },
+  at: { key: r => r.at, fmt: r => plural(r.at, "affluent") },
+  k:  { key: r => r.k,  fmt: r => kmTxt(r.k) },
+};
+function renderRank() {
+  const R = RANKS[$("rank").value], min = +$("minkm").value;
+  const list = rivers.filter(r => r.k >= min).sort((a, b) => R.key(b) - R.key(a) || b.k - a.k);
+  $("rank-count").textContent = `${nf0.format(list.length)} tronçons, du plus grand au plus petit`;
+  $("top").innerHTML = list.map((r, j) => rowHTML(r, R.fmt(r), j + 1)).join("");
+  $("top").scrollTop = 0;
+}
+$("rank").addEventListener("change", renderRank);
+$("minkm").addEventListener("change", renderRank);
+renderRank();
+</script>

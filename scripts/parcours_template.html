@@ -1,0 +1,466 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cinq rivières du Grand Est</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Un élément masqué reste masqué, même si une règle lui donne un « display » */
+[hidden] { display: none !important; }
+/* Layout : récit défilant à gauche, carte collante à droite (en haut sur mobile).
+   Mode clair, design plat : aplats, ni ombre ni dégradé. */
+:root {
+  color-scheme: light;
+  --green-dark: #426a5a;
+  --green: #7fb685;
+  --sand: #f2c57c;
+  --tan: #ddae7e;
+  --coral: #ef6f6c;
+  --ink: #23302b;
+  --ink-2: #66736d;
+  --bg: #ffffff;
+  --soft: #f3f1eb;
+  --rule: #e7e3da;
+  --bar-off: #dcd8ce;
+  --map-bg: #f2f2ef;
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --s-xs: 11.5px; --s-sm: 13px; --s-md: 15px; --s-lg: 20px; --s-xl: 30px; --s-num: 26px;
+}
+
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 var(--s-md)/1.55 var(--font); }
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--green-dark); outline-offset: 2px; }
+
+.story { display: grid; grid-template-columns: minmax(340px, 460px) 1fr; }
+.text { position: relative; z-index: 2; background: var(--bg); }
+.mapwrap { position: sticky; top: env(safe-area-inset-top, 0px); height: 100vh; height: 100dvh; align-self: start; }
+#map { height: 100%; background: var(--map-bg); }
+
+.crumbs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 3; display: flex; align-items: center; gap: 8px;
+  background: var(--green-dark); color: #fff; padding-block: 10px; padding-inline: 28px; font-size: var(--s-sm); }
+.crumbs button { border: 0; background: none; padding: 0; color: #fff; cursor: pointer; font-weight: 500; }
+.crumbs button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.crumbs .sep, .crumbs .here { color: rgba(255, 255, 255, .75); }
+
+.step { min-height: 88vh; display: flex; align-items: center; padding-block: 8vh; padding-inline: 28px; }
+.level1 .step:first-child { min-height: calc(100vh - 40px); }
+.card { width: 100%; transition: opacity .3s; }
+.step:not(.active) .card { opacity: .35; }
+.level2 .step:last-child { min-height: 70vh; }
+
+.eyebrow { font-size: var(--s-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--green-dark); margin: 0 0 10px; }
+h1 { font-size: var(--s-xl); font-weight: 600; line-height: 1.15; margin: 0 0 14px; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font-size: var(--s-lg); font-weight: 600; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; }
+h3 { font-size: var(--s-xs); font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); margin: 20px 0 8px; }
+p { margin: 0 0 12px; max-width: 62ch; }
+.muted { color: var(--ink-2); }
+.hint { font-size: var(--s-sm); color: var(--ink-2); margin-top: 20px; }
+
+.figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 4px 0 18px; }
+.figs div { background: var(--soft); padding: 10px 12px; }
+.figs b { display: block; font-size: var(--s-num); font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--green-dark); }
+.figs span { font-size: var(--s-xs); color: var(--ink-2); }
+
+.choices { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.choice { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; width: 100%; text-align: left;
+  border: 0; border-radius: 2px; background: var(--soft); padding: 12px 14px; cursor: pointer; }
+.choice:hover, .choice:focus-visible { background: var(--green-dark); color: #fff; }
+.choice:hover .muted, .choice:focus-visible .muted { color: rgba(255, 255, 255, .8); }
+.choice b { display: block; font-size: 16px; font-weight: 600; }
+.choice .muted { font-size: var(--s-sm); font-variant-numeric: tabular-nums; }
+.choice .go { font-size: 18px; }
+
+.bars { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; font-size: var(--s-sm); }
+.bars .bar { height: 10px; background: var(--bar-off); }
+.bars .bar.on { background: var(--green-dark); }
+.bars .val { font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-2); }
+.bars .on-lbl { font-weight: 600; color: var(--ink); }
+.bars.tan .bar { background: var(--tan); }
+
+.keys { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--s-sm); margin: 4px 0 14px; }
+.keys span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #fff; outline: 1px solid var(--rule); }
+.line-key { width: 18px; height: 3px; }
+
+.tribs { list-style: none; margin: 0; padding: 0; }
+.tribs li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 8px; margin-inline: -8px; font-size: var(--s-sm); border-radius: 2px; cursor: default; }
+.tribs li:hover { background: var(--soft); }
+.tribs .val { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.foot { font-size: var(--s-xs); color: var(--ink-2); margin-top: 22px; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--green-dark); font-weight: 500; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Leaflet : feuille de style minimale (seul le script est chargé depuis le CDN) */
+.leaflet-pane, .leaflet-tile, .leaflet-marker-icon, .leaflet-tile-container, .leaflet-pane > svg, .leaflet-pane > canvas, .leaflet-layer { position: absolute; left: 0; top: 0; }
+.leaflet-container { overflow: hidden; -webkit-tap-highlight-color: transparent; font-family: var(--font); outline-offset: -2px; }
+.leaflet-container img.leaflet-tile { max-width: none !important; max-height: none !important; width: 256px; height: 256px; padding: 0; border: 0; }
+.leaflet-tile { user-select: none; visibility: hidden; }
+.leaflet-tile-loaded { visibility: inherit; }
+.leaflet-tile-container { pointer-events: none; }
+.leaflet-container.leaflet-touch-zoom { touch-action: pan-x pan-y; }
+.leaflet-container.leaflet-touch-drag { touch-action: pinch-zoom; }
+.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom { touch-action: none; }
+.leaflet-pane { z-index: 400; }
+.leaflet-tile-pane { z-index: 200; }
+.leaflet-overlay-pane { z-index: 400; }
+.leaflet-marker-pane { z-index: 600; }
+.leaflet-tooltip-pane { z-index: 650; }
+.leaflet-map-pane canvas { z-index: 100; }
+.leaflet-zoom-animated { transform-origin: 0 0; }
+.leaflet-zoom-anim .leaflet-zoom-animated { transition: transform .25s cubic-bezier(0, 0, .25, 1); }
+.leaflet-zoom-anim .leaflet-zoom-hide { visibility: hidden; }
+.leaflet-fade-anim .leaflet-tile { will-change: opacity; }
+.leaflet-interactive { cursor: pointer; }
+.leaflet-grab { cursor: grab; }
+.leaflet-dragging .leaflet-grab { cursor: grabbing; }
+.leaflet-marker-icon { pointer-events: none; }
+.leaflet-top, .leaflet-bottom { position: absolute; z-index: 1000; pointer-events: none; }
+.leaflet-top { top: 0; } .leaflet-right { right: 0; } .leaflet-bottom { bottom: 0; } .leaflet-left { left: 0; }
+.leaflet-control { position: relative; z-index: 800; pointer-events: auto; float: left; clear: both; }
+.leaflet-right .leaflet-control { float: right; margin-right: 10px; }
+.leaflet-top .leaflet-control { margin-top: 10px; }
+.leaflet-bottom .leaflet-control { margin-bottom: 8px; }
+.leaflet-left .leaflet-control { margin-left: 10px; }
+.leaflet-control-zoom { display: flex; flex-direction: column; gap: 2px; }
+.leaflet-control-zoom a { width: 30px; height: 30px; display: grid; place-items: center; color: #fff; background: var(--green-dark); text-decoration: none; font-size: 17px; line-height: 1; border-radius: 2px; }
+.leaflet-control-zoom a:hover { background: var(--ink); }
+.leaflet-control-zoom a.leaflet-disabled { opacity: .4; cursor: default; }
+.leaflet-control-scale-line { border: 1px solid var(--ink-2); border-top: 0; padding: 0 4px; font-size: var(--s-xs); color: var(--ink); background: rgba(255, 255, 255, .7); }
+.leaflet-bottom.leaflet-right .leaflet-control-attribution { margin: 0; clear: none; }
+.leaflet-control-attribution { background: rgba(255, 255, 255, .8); padding: 0 5px; font-size: 10.5px; color: var(--ink-2); }
+.leaflet-control-attribution a { color: var(--ink-2); }
+.leaflet-tooltip { position: absolute; pointer-events: none; white-space: nowrap; background: var(--ink); color: #fff; border-radius: 2px; padding: 5px 8px; font-size: var(--s-sm); }
+.leaflet-tooltip .muted { color: rgba(255, 255, 255, .72); }
+.river-label { white-space: nowrap; width: max-content; transform: translate(-50%, -140%); background: var(--green-dark); color: #fff;
+  font-size: var(--s-sm); font-weight: 600; padding: 2px 8px; border-radius: 2px; }
+
+@media (max-width: 820px) {
+  .story { grid-template-columns: 1fr; }
+  .mapwrap { order: -1; height: 46vh; z-index: 4; }
+  .crumbs { top: calc(46vh + env(safe-area-inset-top, 0px)); padding-inline: 16px; }
+  .step { min-height: 66vh; padding-inline: 16px; padding-block: 6vh; align-items: flex-start; }
+  .level1 .step:first-child { min-height: 60vh; }
+  h1 { font-size: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card { transition: none; }
+  .leaflet-zoom-anim .leaflet-zoom-animated { transition: none; }
+}
+</style>
+
+<div class="story">
+  <div class="text">
+    <nav class="crumbs" aria-label="Niveau de lecture">
+      <button type="button" id="crumb-home">Cinq rivières</button>
+      <span class="sep" id="crumb-sep" hidden>›</span>
+      <span class="here" id="crumb-here" hidden></span>
+    </nav>
+
+    <section class="level1">
+      <article class="step" data-state="overview">
+        <div class="card">
+          <p class="eyebrow">Hydrographie · Grand Est</p>
+          <h1>Cinq rivières du Grand Est</h1>
+          <p id="intro"></p>
+          <p>Pour chacune, on suit son parcours, on compte ses virages et on remonte ses affluents.</p>
+          <p class="hint">Faites défiler pour choisir une rivière ↓</p>
+        </div>
+      </article>
+      <article class="step" data-state="choice" id="choice">
+        <div class="card">
+          <p class="eyebrow">Niveau 1</p>
+          <h2>Choisissez une rivière</h2>
+          <div class="choices" id="choices"></div>
+          <p class="foot">Source : cours-eau-region (BD TOPAGE, Sandre / IGN). Fond de carte <span id="basemap-credit"></span>.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="level2" id="level2" hidden></section>
+  </div>
+  <div class="mapwrap"><div id="map" aria-label="Carte de la rivière"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-river@1.0.1/dist/Leaflet.river.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+
+const nf0 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const plural = (n, w, ws = w + "s") => `${nf0.format(n)} ${n > 1 ? ws : w}`;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const css = getComputedStyle(document.documentElement);
+const tok = k => css.getPropertyValue("--" + k).trim();
+const C = { river: tok("green-dark"), trib: tok("green"), left: tok("sand"), right: tok("coral"), dept: tok("tan") };
+
+const decode = arr => {
+  const out = []; let x = 0, y = 0;
+  for (let i = 0; i < arr.length; i += 2) { x += arr[i]; y += arr[i + 1]; out.push([y / DATA.q, x / DATA.q]); }
+  return out;
+};
+const pt = ([x, y]) => [y / DATA.q, x / DATA.q];
+
+const rivers = DATA.rivers.map((r, i) => ({ ...r, i, lines: r.g.map(decode) }));
+
+// ---------- Carte ----------
+const mobile = matchMedia("(max-width: 820px)").matches;
+// Canevas par défaut de la carte : Leaflet.River y dessine ses segments
+const riverRenderer = L.canvas({ padding: 0.5, tolerance: 6 });
+const map = L.map("map", { renderer: riverRenderer, zoomControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false, zoomSnap: 0.25, minZoom: 6, maxZoom: 15 });
+map.attributionControl.setPrefix(false);
+// Fond de carte choisi à la génération : style Mapbox si un jeton est fourni, sinon CARTO
+const BASEMAP = /*__BASEMAP__*/null;
+L.tileLayer(BASEMAP.url, BASEMAP.options).addTo(map);
+document.getElementById("basemap-credit").textContent = BASEMAP.credit;
+L.control.zoom({ position: "topright", zoomInTitle: "Zoomer", zoomOutTitle: "Dézoomer" }).addTo(map);
+L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
+
+const base = L.canvas({ padding: 0.5 });
+const world = [[-85, -179], [-85, 179], [85, 179], [85, -179]];
+L.polygon([world, ...DATA.region.map(decode)], { renderer: base, interactive: false, stroke: false, fillColor: "#fff", fillOpacity: 0.55 }).addTo(map);
+DATA.depts.forEach(rings => L.polygon(rings.map(decode), { renderer: base, interactive: false, fill: false, color: C.dept, weight: 1.2 }).addTo(map));
+const regionBounds = L.latLngBounds(DATA.region.flatMap(decode));
+map.fitBounds(regionBounds, { padding: [16, 16] });
+
+// Points des virages sur leur propre canevas, ajouté après celui des rivières (donc au-dessus)
+const dotRenderer = L.canvas({ padding: 0.5 });
+
+// Leaflet.River : largeur croissante de la source à l'embouchure. Le plugin ne gère pas
+// les tracés en plusieurs parties : chaque partie (rangée de l'amont vers l'aval) reçoit
+// la tranche de largeur qui correspond à sa position le long de la rivière (rp).
+function taperedRiver(lines, rp) {
+  const parts = lines.map(ll => L.river(ll, { minWidth: 1, maxWidth: 1 }));
+  const group = L.featureGroup(parts);
+  group.setRiverStyle = ({ color, opacity = 1, minW, maxW }) => parts.forEach((part, j) => {
+    const [p0, p1] = rp[j];
+    const o = { color, opacity, minWidth: minW + (maxW - minW) * p0, maxWidth: minW + (maxW - minW) * p1 };
+    part._map ? part.setStyle(o) : L.setOptions(part, o);   // setStyle du plugin exige la carte
+  });
+  return group;
+}
+// Largeur des rivières : vue régionale (selon la taille du réseau) ou vue rapprochée
+let focusScale = false;
+const maxAt = Math.max(...rivers.map(r => r.at));
+function riverStyle(r, { hl = false, dim = false } = {}) {
+  const maxW = focusScale ? 5 : 1.5 + 2.5 * Math.sqrt(r.at / maxAt);
+  r.layer.setRiverStyle({ color: C.river, opacity: dim ? 0.3 : 1, minW: focusScale ? 1.2 : 1, maxW: maxW + (hl ? 1.5 : 0) });
+}
+
+// Les cinq rivières (niveau 1)
+rivers.forEach(r => {
+  r.layer = taperedRiver(r.lines, r.rp);
+  riverStyle(r);
+  r.layer.addTo(map);
+  r.layer.on("click", () => openRiver(r.i));
+  r.layer.on("mouseover", () => hover(r.i));
+  r.layer.on("mouseout", () => hover(null));
+  const longest = r.lines.reduce((a, b) => (b.length > a.length ? b : a));
+  r.label = L.marker(longest[Math.floor(longest.length / 2)], { interactive: false, keyboard: false,
+    icon: L.divIcon({ className: "", iconSize: null, html: `<div class="river-label">${esc(cap(r.n))}</div>` }) });
+});
+function hover(i) {
+  rivers.forEach(r => riverStyle(r, { hl: i === r.i, dim: i !== null && i !== r.i }));
+}
+
+// Couches de détail de la rivière ouverte
+let detail = { bends: null, window: null, tribs: null, tribLines: [] };
+function clearDetail() {
+  ["bends", "window", "tribs"].forEach(k => { if (detail[k]) detail[k].remove(); });
+  detail = { bends: null, window: null, tribs: null, tribLines: [] };
+}
+function buildDetail(r) {
+  clearDetail();
+  detail.bends = L.layerGroup(r.b.map(b => L.circleMarker(pt(b), {
+    renderer: dotRenderer, radius: 3.5, weight: 1, color: "#fff", fillColor: b[2] > 0 ? C.left : C.right, fillOpacity: 1, interactive: false,
+  })));
+  detail.window = L.layerGroup(r.w.pts.map(p => L.circleMarker(pt(p), {
+    renderer: dotRenderer, radius: 5, weight: 1.5, color: "#fff", fillColor: C.right, fillOpacity: 1, interactive: false,
+  })));
+  const maxTribK = Math.max(...r.tribs.map(t => t.k));
+  detail.tribLines = r.tribs.map(t => {
+    const l = taperedRiver(t.g.map(decode), t.rp);
+    l.restyle = (on = false) => l.setRiverStyle({ color: on ? C.river : C.trib, minW: 0.6, maxW: 0.9 + 1.6 * Math.sqrt(t.k / maxTribK) + (on ? 1 : 0) });
+    l.restyle();
+    l.bindTooltip(`<b>${esc(t.n)}</b><br><span class="muted">${nf1.format(t.k)} km · ${plural(t.v, "virage")} · ${plural(t.a, "affluent")}</span>`, { sticky: true, direction: "top", offset: [0, -8] });
+    l.on("mouseover", () => l.restyle(true));
+    l.on("mouseout", () => l.restyle());
+    return l;
+  });
+  detail.tribs = L.layerGroup(detail.tribLines);
+}
+
+// États de la carte, appelés par le défilement
+let current = null, state = null;
+const fly = (b, opt = {}) => map.flyToBounds(b, { padding: mobile ? [20, 20] : [50, 50], duration: reduced ? 0 : 1.1, ...opt });
+function showOnly(i) { rivers.forEach(r => { r.i === i || i === "all" ? r.layer.addTo(map) : r.layer.remove(); r.label.remove(); }); }
+function setState(next, i) {
+  const key = next + ":" + i;
+  if (key === state) return;
+  state = key;
+  focusScale = !["overview", "choice", "end"].includes(next);
+  hover(null);
+  if (next === "overview" || next === "choice" || next === "end") {
+    clearDetailLayers();
+    showOnly("all");
+    if (next === "choice") rivers.forEach(r => r.label.addTo(map));
+    if (next === "end") rivers.forEach(r => riverStyle(r, { dim: r.i !== i }));
+    fly(regionBounds);
+    return;
+  }
+  const r = rivers[i];
+  showOnly(i);
+  clearDetailLayers();
+  if (next === "course") fly(r.layer.getBounds());
+  if (next === "bends") { detail.bends.addTo(map); fly(r.layer.getBounds()); }
+  if (next === "window") { detail.bends.addTo(map); detail.window.addTo(map); fly(L.latLngBounds(r.w.pts.map(pt)), { maxZoom: 14, padding: [70, 70] }); }
+  if (next === "tribs") {
+    // Même canevas que la rivière : on la remet après ses affluents pour qu'elle passe dessus
+    detail.tribs.addTo(map);
+    r.layer.remove();
+    r.layer.addTo(map);
+    const b = r.layer.getBounds();
+    detail.tribLines.forEach(l => b.extend(l.getBounds()));
+    fly(b);
+  }
+}
+function clearDetailLayers() { ["bends", "window", "tribs"].forEach(k => { if (detail[k]) detail[k].remove(); }); }
+
+// ---------- Niveau 1 ----------
+const totalKm = rivers.reduce((s, r) => s + r.k, 0);
+$("intro").textContent = `${nf0.format(DATA.total)} cours d'eau parcourent la région. Cinq rivières, de l'Aisne à l'Ill, en couvrent à elles seules ${nf0.format(totalKm)} km : leurs méandres et leurs réseaux d'affluents racontent la façon dont l'eau dessine le territoire.`;
+$("choices").innerHTML = rivers.map(r => `
+  <button class="choice" type="button" data-i="${r.i}">
+    <span><b>${esc(cap(r.n))}</b><span class="muted">${nf0.format(r.k)} km · ${plural(r.v, "virage")} · ${plural(r.a, "affluent")}</span></span>
+    <span class="go" aria-hidden="true">→</span>
+  </button>`).join("");
+$("choices").addEventListener("click", e => { const b = e.target.closest("button[data-i]"); if (b) openRiver(+b.dataset.i); });
+$("choices").addEventListener("mouseover", e => { const b = e.target.closest("button[data-i]"); hover(b ? +b.dataset.i : null); });
+$("choices").addEventListener("mouseleave", () => hover(null));
+
+// ---------- Niveau 2 ----------
+const maxVk = Math.max(...rivers.map(r => r.vk));
+function story(r) {
+  const name = r.n, Name = cap(r.n);
+  const left = r.b.filter(b => b[2] > 0).length, right = r.b.length - left;
+  const deptMax = Math.max(...r.depts.map(d => d[1]));
+  const mouth = r.recv ? `Dans les données, elle se jette dans ${esc(r.recv)}.` : "Son embouchure se trouve hors de la région.";
+  const top = r.tribs.slice(0, 6);
+  const others = rivers.filter(o => o.i !== r.i);
+  const stepHead = (n, label) => `<p class="eyebrow">${esc(Name)} · ${n} / 4 · ${label}</p>`;
+  return `
+  <article class="step" data-state="course" data-i="${r.i}"><div class="card">
+    ${stepHead(1, "Le parcours")}
+    <h2>${esc(Name)}</h2>
+    <div class="figs">
+      <div><b>${nf0.format(r.k)}</b><span>km dans la région</span></div>
+      <div><b>${nf0.format(r.v)}</b><span>virages</span></div>
+      <div><b>${nf0.format(r.a)}</b><span>affluents directs</span></div>
+    </div>
+    <p>Dans le Grand Est, ${esc(name)} parcourt ${nf0.format(r.k)} km à travers ${plural(r.depts.length, "département")}. ${mouth}</p>
+    <h3>Kilomètres par département</h3>
+    <div class="bars tan">${r.depts.map(([d, k]) => `<span>${esc(d)}</span><span class="bar" style="width:${(k / deptMax * 100).toFixed(1)}%"></span><span class="val">${nf0.format(k)} km</span>`).join("")}</div>
+  </div></article>
+
+  <article class="step" data-state="bends" data-i="${r.i}"><div class="card">
+    ${stepHead(2, "Les virages")}
+    <h2>${plural(r.v, "virage")}</h2>
+    <p>On compte un virage pour chaque tournant d'au moins 45° d'un même côté. Il s'arrête quand la rivière repart de l'autre côté ou file en ligne droite. Chaque point marque le sommet d'un virage, dans le sens du courant :</p>
+    <div class="keys">
+      <span><span class="dot" style="background:${C.left}"></span>${plural(left, "virage")} à gauche</span>
+      <span><span class="dot" style="background:${C.right}"></span>${plural(right, "virage")} à droite</span>
+    </div>
+    <p>Cela fait ${nf1.format(r.vk)} virage${r.vk >= 2 ? "s" : ""} par kilomètre, soit un virage tous les ${nf0.format(r.k * 1000 / Math.max(r.v, 1))} m en moyenne.</p>
+    <h3>Virages par km, comparés aux autres rivières</h3>
+    <div class="bars">${[...rivers].sort((a, b) => b.vk - a.vk).map(o => `<span class="${o.i === r.i ? "on-lbl" : ""}">${esc(cap(o.n))}</span><span class="bar${o.i === r.i ? " on" : ""}" style="width:${(o.vk / maxVk * 100).toFixed(1)}%"></span><span class="val">${nf1.format(o.vk)}</span>`).join("")}</div>
+  </div></article>
+
+  <article class="step" data-state="window" data-i="${r.i}"><div class="card">
+    ${stepHead(3, "Le passage le plus sinueux")}
+    <h2>${plural(r.w.n, "virage")} en ${nf0.format(r.w.km)} km</h2>
+    <p>C'est le tronçon le plus tourmenté de ${esc(name)}${r.w.commune ? `, près de ${esc(r.w.commune)}` : ""}. Sur ces ${nf0.format(r.w.km)} km, elle tourne en moyenne tous les ${nf0.format(r.w.km * 1000 / r.w.n)} m, contre tous les ${nf0.format(r.k * 1000 / Math.max(r.v, 1))} m sur l'ensemble de son tracé.</p>
+    <p class="muted">Les virages de ce passage sont agrandis sur la carte.</p>
+  </div></article>
+
+  <article class="step" data-state="tribs" data-i="${r.i}"><div class="card">
+    ${stepHead(4, "Les affluents")}
+    <h2>${plural(r.a, "affluent direct", "affluents directs")}</h2>
+    <p>${plural(r.a, "cours d'eau se jette", "cours d'eau se jettent")} directement dans ${esc(name)}. En comptant les affluents de ses affluents, son réseau rassemble ${plural(r.at, "cours d'eau", "cours d'eau")}.</p>
+    <div class="keys">
+      <span><span class="line-key" style="background:${C.river}"></span>${esc(Name)}</span>
+      <span><span class="line-key" style="background:${C.trib}"></span>ses affluents directs</span>
+    </div>
+    <h3>Les plus longs</h3>
+    <ul class="tribs" id="tribs-${r.i}">${top.map((t, j) => `<li data-j="${j}"><span>${esc(t.n)}</span><span class="val">${nf0.format(t.k)} km · ${plural(t.a, "affluent")}</span></li>`).join("")}</ul>
+  </div></article>
+
+  <article class="step" data-state="end" data-i="${r.i}"><div class="card">
+    <p class="eyebrow">Suite</p>
+    <h2>Une autre rivière ?</h2>
+    <div class="choices" id="others">${others.map(o => `
+      <button class="choice" type="button" data-i="${o.i}">
+        <span><b>${esc(cap(o.n))}</b><span class="muted">${nf0.format(o.k)} km · ${plural(o.v, "virage")} · ${plural(o.a, "affluent")}</span></span>
+        <span class="go" aria-hidden="true">→</span>
+      </button>`).join("")}</div>
+    <p class="hint"><button class="linkbtn" type="button" id="back">Revenir au choix des rivières</button></p>
+  </div></article>`;
+}
+
+function openRiver(i) {
+  const r = rivers[i];
+  current = i;
+  buildDetail(r);
+  const box = $("level2");
+  box.innerHTML = story(r);
+  box.hidden = false;
+  $("others").addEventListener("click", e => { const b = e.target.closest("button[data-i]"); if (b) openRiver(+b.dataset.i); });
+  $("back").addEventListener("click", () => scrollToStep($("choice")));
+  const list = $("tribs-" + i);
+  list.addEventListener("mouseover", e => { const li = e.target.closest("li"); detail.tribLines.forEach((l, j) => l.restyle(!!li && +li.dataset.j === j)); });
+  list.addEventListener("mouseleave", () => detail.tribLines.forEach(l => l.restyle()));
+  $("crumb-here").textContent = cap(r.n);
+  state = null;
+  scrollToStep(box.querySelector(".step"));
+}
+
+// ---------- Défilement ----------
+// L'étape active est celle dont le texte (la carte .card, pas le bloc entier) est le plus
+// proche de la ligne de lecture : le milieu de l'écran, ou le milieu de la zone de texte
+// sous la carte sur mobile. Carte et texte changent ainsi au même moment.
+const readingLine = () => (mobile ? 0.73 : 0.5) * innerHeight;
+let activeStep = null;
+function updateActive() {
+  const line = readingLine();
+  let best = null, bestD = Infinity;
+  document.querySelectorAll(".step").forEach(step => {
+    if (!step.offsetParent) return;                      // niveau 2 encore masqué
+    const r = step.querySelector(".card").getBoundingClientRect();
+    const d = Math.abs(r.top + r.height / 2 - line);
+    if (d < bestD) { bestD = d; best = step; }
+  });
+  if (!best || best === activeStep) return;
+  if (activeStep) activeStep.classList.remove("active");
+  activeStep = best;
+  best.classList.add("active");
+  const st = best.dataset.state, i = best.dataset.i === undefined ? null : +best.dataset.i;
+  $("crumb-sep").hidden = $("crumb-here").hidden = current === null;
+  $("crumb-here").style.fontWeight = i !== null && st !== "end" ? 600 : 400;
+  setState(st, i);
+}
+let ticking = false;
+const onScroll = () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; updateActive(); }); } };
+addEventListener("scroll", onScroll, { passive: true });
+addEventListener("resize", onScroll);
+
+// Amène le texte d'une étape sur la ligne de lecture
+function scrollToStep(step) {
+  const r = step.querySelector(".card").getBoundingClientRect();
+  scrollTo({ top: scrollY + r.top + r.height / 2 - readingLine(), behavior: reduced ? "auto" : "smooth" });
+}
+$("crumb-home").addEventListener("click", () => scrollToStep($("choice")));
+updateActive();
+</script>
