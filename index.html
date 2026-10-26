@@ -158,13 +158,12 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 .desel { flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--ink-2); background: none; color: var(--ink-2);
   display: flex; align-items: center; justify-content: center; cursor: pointer; transition: color .2s, border-color .2s; }
 .desel:hover { color: var(--accent); border-color: var(--accent); }
-/* Clignotement unique des invitations de la page 3 (trois éclats orange) */
-.cta-hint { border-radius: 2px; padding: 0 2px; }
-.cta-hint.blink { animation: hint-blink .8s ease-in-out 3; }
-@keyframes hint-blink { 50% { background: var(--accent); color: var(--bg); } }
-.desel.blink { animation: desel-blink .8s ease-in-out 3; }
-@keyframes desel-blink { 50% { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 5px rgba(240, 163, 59, .45); } }
-@media (prefers-reduced-motion: reduce) { .cta-hint.blink, .desel.blink { animation: none; } }
+/* Invitations de la page 3 : le texte (ou la croix) clignote en orange, sans fond, jusqu'au tour complet */
+.cta-hint.blink { animation: hint-blink 1.4s ease-in-out infinite; }
+@keyframes hint-blink { 50% { color: var(--accent); text-shadow: 0 0 10px rgba(240, 163, 59, .5); } }
+.desel.blink { animation: desel-blink 1.4s ease-in-out infinite; }
+@keyframes desel-blink { 50% { color: var(--accent); border-color: var(--accent); } }
+@media (prefers-reduced-motion: reduce) { .cta-hint.blink, .desel.blink { animation: none; color: var(--accent); border-color: var(--accent); } }
 .desel svg { width: 12px; height: 12px; }
 /* Page 1 : la carte ne se clique pas (on ne fait que la survoler et défiler) */
 #bg-front.no-click .dept-hit, #bg-front.no-click .river-hit { cursor: default; }
@@ -1002,22 +1001,13 @@ function riverRows(c, named = false) {
     return row;
   });
 }
-// Invitations de la page 3 : elles clignotent une seule fois chacune, au moment où elles servent
-// (un département à choisir, puis un cours d'eau, puis la croix pour revenir au Grand Est)
-const blinked = new Set();
-function blinkOnce(key, el, delay = 0) {
-  if (blinked.has(key) || !el || bg.page !== "p2") return;
-  blinked.add(key);
-  setTimeout(() => {
-    el.classList.remove("blink"); void el.offsetWidth; el.classList.add("blink");
-    // Classe retirée à la fin : un élément caché puis réaffiché ne doit pas reclignoter
-    el.addEventListener("animationend", () => el.classList.remove("blink"), { once: true });
-  }, delay);
-}
+// Invitations de la page 3 : l'étape à faire clignote (le texte seul) tant que le visiteur n'a pas fait
+// un tour complet : choisir un département, puis un cours d'eau, puis revenir au Grand Est avec la croix.
+let hintCycleDone = false;
 function blinkHints() {
-  const hint = document.querySelector("#ex-sub .cta-hint");
-  if (!sel.dept && !sel.river) blinkOnce("dept", hint);
-  else if (sel.dept && !sel.river) { blinkOnce("river", hint); blinkOnce("desel", $("desel"), 2600); }
+  const hint = document.querySelector("#ex-sub .cta-hint"), desel = $("desel");
+  const target = hintCycleDone ? null : sel.river ? desel : hint;   // sans cours d'eau : « Cliquez sur un département / un cours d'eau »
+  [hint, desel].forEach(el => el && el.classList.toggle("blink", el === target));
 }
 function updateExplore() {
   const { dept, river } = sel;
@@ -1324,6 +1314,13 @@ function obsFromScroll() {
   });
 }
 
+// Page 2 : les compteurs démarrent quand la page est arrivée en entier (son haut touche le haut de l'écran),
+// une fois par visite ; ils repartent de zéro si on revient sur la page.
+let countersArmed = true;
+function countersFromScroll() {
+  if (countersArmed && $("vue").getBoundingClientRect().top <= 1) { countersArmed = false; playCounters(); }
+}
+
 // ================= Voiles : le flou derrière les textes suit le défilement =================
 const clamp01 = v => Math.max(0, Math.min(1, v));
 // Un voile par cas, flou du côté de son texte (bord adouci du côté de la carte)
@@ -1393,7 +1390,8 @@ function enter(id) {
   bg.page = id;
   bg.stHover = null;
   if (id !== "vue" && window.clearVueHighlight) clearVueHighlight();
-  if (id === "vue") playCounters(); else stopCounters();
+  // Page 2 : les compteurs attendent que la page soit entièrement à l'écran (voir countersFromScroll)
+  if (id !== "vue") { stopCounters(); countersArmed = true; }
   front.classed("explore", id === "p2").classed("no-click", clicksOff());
   const step = id.startsWith("c") ? +id.slice(1) : -1, nextBtn = $("next-step");
   nextBtn.hidden = step < 0;
@@ -1408,7 +1406,7 @@ function enter(id) {
     if (id === "outro") { sel = { dept: null, river: null }; hovered = null; }
     regionMapState();
     flyTo(...pageView(id));
-    if (id === "p2") blinkHints();   // arrivée sur la page 3 : l'invitation à choisir un département clignote (une fois)
+    if (id === "p2") blinkHints();   // arrivée sur la page 3 : l'étape à faire clignote
     return;
   }
   const c = cases[+$(id).dataset.case], r = riverByC[c.c];
@@ -1429,10 +1427,11 @@ function updateActive() {
   if (best && best !== active) { active = best; enter(best); }
 }
 let ticking = false;
-addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; updateActive(); obsFromScroll(); updateVeils(); }); } }, { passive: true });
+addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; updateActive(); obsFromScroll(); updateVeils(); countersFromScroll(); }); } }, { passive: true });
 
 // ================= Mise en route =================
-$("desel").addEventListener("click", selectRegion);
+// Croix cliquée avec un cours d'eau choisi : le tour département → cours d'eau → croix est fait, plus de clignotement
+$("desel").addEventListener("click", () => { if (sel.river) hintCycleDone = true; selectRegion(); });
 document.addEventListener("click", e => { const b = e.target.closest("[data-to]"); if (b) go(b.dataset.to); });
 setupMap();
 bg.T = fullView(); applyView(bg.T, true);
