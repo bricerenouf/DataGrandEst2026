@@ -244,7 +244,18 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 #outro { min-height: 100vh; padding: 8vh 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
 #outro .layer { max-width: 680px; margin: 0 var(--gap); background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* transparent : le fond flou suffit */
 #outro p { color: #d2d2db; font-size: 17px; line-height: 1.6; }
-#outro p.foot { font-size: 12px; line-height: 1.5; }   /* les sources restent discrètes */
+#outro em { font-style: normal; color: var(--accent); font-weight: 500; }   /* mots clés en orange */
+/* « Et dans 20 ou 40 ans ? » : des hypothèses, avec le filet orange des hypothèses */
+#outro .future { margin-top: 22px; padding-left: 16px; border-left: 2px solid var(--accent); }
+#outro .future h3 { margin: 0 0 6px; font-size: 20px; font-weight: 600; color: var(--ink); }
+#outro .future p { margin: 0 0 8px; font-size: 15px; color: var(--ink-2); }
+#outro .future ul { margin: 0; padding-left: 18px; color: #d2d2db; font-size: 16px; line-height: 1.55; }
+#outro .future li { margin-bottom: 8px; }
+#outro .future b { color: var(--ink); font-weight: 600; }
+/* Sources : discrètes, tout en bas de la page */
+#outro { position: relative; }
+#outro p.sources { position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(680px, calc(100vw - 2 * var(--gap)));
+  margin: 0; font-size: 12px; line-height: 1.5; text-align: center; color: var(--ink-2); pointer-events: auto; }
 
 #outro h2 { margin: 0 0 8px; font-size: clamp(22px, 2.4vw, 30px); font-weight: 600; }
 
@@ -380,12 +391,21 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 
   <section id="outro">
     <div class="layer">
-      <h2>Ce que l'eau nous dit, ce qu'elle tait encore</h2>
-      <p>En vingt-cinq ans, la région s'est réchauffée, la neige s'est faite rare et les années extrêmes s'enchaînent, de la sécheresse de 2022 aux pluies de 2024.
-        Pourtant, chaque rivière garde son propre rythme : certaines suivent la pluie à la semaine près, d'autres dépendent d'une craie qui retient l'eau, d'une neige qui la garde jusqu'au printemps, d'un barrage ou d'anciennes mines.</p>
-      <p>Les questions restent nombreuses. Les étés comme 2022 vont-ils devenir la règle ? Sans neige, le printemps des rivières vosgiennes va-t-il s'affaiblir ? Les années très humides suffiront-elles à rattraper les années sèches ?</p>
-      <p class="foot">Sources : Météo France, Hubeau France et datagouv (BD Topage). Cette visualisation a été réalisée dans le cadre du concours DataGrandEst2026. Les explications marquées d'un filet orange sont des hypothèses.</p>
+      <h2>Et maintenant&nbsp;? On laisse couler&nbsp;?</h2>
+      <p>En vingt-cinq ans, la région <em>s'est réchauffée</em>, <em>la neige s'est faite rare</em> et <em>les années extrêmes s'enchaînent</em>, de la sécheresse de 2022 aux pluies de 2024.
+        Pourtant, chaque rivière garde <em>son propre rythme</em> : certaines suivent la pluie à la semaine près, d'autres dépendent d'une craie qui retient l'eau, d'une neige qui la garde jusqu'au printemps, d'un barrage ou d'anciennes mines.</p>
+      <p><em>Les questions restent nombreuses.</em> Les étés comme 2022 vont-ils devenir la règle ? Sans neige, le printemps des rivières vosgiennes va-t-il s'affaiblir ? Les années très humides suffiront-elles à rattraper les années sèches ?</p>
+      <div class="future">
+        <h3>Et dans 20 ou 40 ans ?</h3>
+        <p>En prolongeant simplement les tendances de ces vingt-cinq ans (une hypothèse, pas une prévision) :</p>
+        <ul>
+          <li><b>Des étés comme 2022, la norme.</b> Au rythme actuel, la région gagnerait encore environ 1 °C d'ici 20 ans et 2 °C d'ici 40 ans : l'été 2022 pourrait devenir un été ordinaire, et les petites rivières passer des semaines au plus bas.</li>
+          <li><b>Des Vosges sans neige.</b> À ce rythme, la neige d'hiver aurait presque disparu d'ici une trentaine d'années, et les rivières comme la Lauch perdraient leur réserve de printemps.</li>
+          <li><b>Des montagnes russes.</b> Les années extrêmes, comme 2022 puis 2024, pourraient se rapprocher : trop d'eau certains hivers, pas assez certains étés. Les rivières lentes comme la Suippe amortiraient le choc, les nerveuses comme le Rosselle le subiraient de plein fouet.</li>
+        </ul>
+      </div>
     </div>
+    <p class="foot sources">Sources : Météo France, Hubeau France et datagouv (BD Topage). Cette visualisation a été réalisée dans le cadre du concours DataGrandEst2026. Les explications marquées d'un filet orange sont des hypothèses.</p>
   </section>
 </main>
 
