@@ -1247,8 +1247,7 @@ function drawCaseTables() {
       requestAnimationFrame(step);
     }, i * dur * 0.8));
   };
-  // En quittant la page, les compteurs s'arrêtent ; ils repartiront de zéro au retour
-  window.stopCounters = () => { run++; };
+
   $("stats").querySelectorAll("li").forEach((li, i) => {
     const on = () => vueHighlight(tiles[i], colors[i]), off = () => vueHighlight(null);
     li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off);
@@ -1326,7 +1325,7 @@ function obsFromScroll() {
 }
 
 // Page 2 : les compteurs démarrent quand la page est arrivée en entier (son haut touche le haut de l'écran),
-// une fois par visite ; ils repartent de zéro si on revient sur la page.
+// une seule fois : ensuite les chiffres gardent leur valeur, même si on revient sur la page.
 let countersArmed = true;
 function countersFromScroll() {
   if (countersArmed && $("vue").getBoundingClientRect().top <= 1) { countersArmed = false; playCounters(); }
@@ -1401,8 +1400,6 @@ function enter(id) {
   bg.page = id;
   bg.stHover = null;
   if (id !== "vue" && window.clearVueHighlight) clearVueHighlight();
-  // Page 2 : les compteurs attendent que la page soit entièrement à l'écran (voir countersFromScroll)
-  if (id !== "vue") { stopCounters(); countersArmed = true; }
   front.classed("explore", id === "p2").classed("no-click", clicksOff());
   const step = id.startsWith("c") ? +id.slice(1) : -1, nextBtn = $("next-step");
   nextBtn.hidden = step < 0;
