@@ -1326,7 +1326,7 @@ const OBS = (() => {
       table: () => [{ label: "Grand Est", values: measured(DATA.regionRaw, "region", "neige"), c: "neige", cls: "mid" },
         ...["88", "68", "67"].map(code => deptByCode[code]).filter(Boolean).map(d => ({ label: d.nom, values: measured(d, "d" + d.code, "neige"), c: "neige", cls: "mid" }))],
       opts: { gran: "year" } },
-    { tab: "Du très sec au très humide", big: `${b["2022"].below} → ${b["2024"].above}`,
+    { tab: "Du très sec au très humide", big: `+${nf0.format(Math.round(100 * (b["2024"].rain / b["2022"].rain - 1)))} % de pluie`,
       text: `<p>En 2022, il tombe ${nf0.format(b["2022"].rain)} mm de pluie : <b>${b["2022"].below} stations sur ${b["2022"].n}</b> coulent sous leur normale sur l'année.</p>
         <p>Deux ans plus tard, en 2024, ${nf0.format(b["2024"].rain)} mm : <b>${b["2024"].above === b["2024"].n ? "toutes" : b["2024"].above} les ${b["2024"].n} stations</b> coulent au-dessus.</p>`,
       cap: "Grand Est, écart à la normale, mois par mois, de 2021 à 2025",
