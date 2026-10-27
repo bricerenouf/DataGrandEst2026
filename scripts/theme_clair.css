@@ -13,7 +13,7 @@
   --accent: #c0611a;
   /* Sur fond clair, les grandes rivières sont les plus foncées */
   --river-1: #9cc3e4; --river-2: #3e83c1; --river-3: #1f4e79;
-  --flow: rgba(16, 52, 96, .9);
+  --flow: rgba(25, 158, 112, .95);         /* l'eau qui coule : le vert des affluents de la page 2 (#199e70) */
   --strong: #1e2430;
   --dept-line: #cfc8ba; --dim: rgba(246, 244, 239, .62); --case-dim: rgba(246, 244, 239, .5);
   --river-hover: #0e3a66; --city-dot: #5b6472; --city: #2e3542; --st-dot: #7f8794;

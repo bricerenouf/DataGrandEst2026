@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from analyse_memoire import OUT as STATIONS_CSV, Network, fnum, load_stations, proj, seg_dist  # noqa: E402
-from build_carte_cours_eau import DEPTS, Q, REGION, SRC, encode, length_km, order_parts, simplify  # noqa: E402
+from build_carte_cours_eau import DEPTS, KX, KY, Q, REGION, SRC, encode, length_km, simplify  # noqa: E402
 from build_parcours import Areas  # noqa: E402
 from build_tableau import EVENTS, MISSING, VARS, mean_rows, pack, ranks  # noqa: E402
 
@@ -32,6 +32,8 @@ THEME_CLAIR_CSS = ROOT / "scripts" / "theme_clair.css"
 # (couleurs vérifiées : contraste sur le fond papier et lisibilité pour les daltoniens)
 THEME_CLAIR = {"diverging": ["#a6501c", "#d9925a", "#d8d4cb", "#6fa8d8", "#1f5f99"],
                "tiles": ["#c4621c", "#256abf", "#199e70", "#b04a8c"],
+               # surbrillance sur la carte : la Meuse (2e chiffre) en orange, le bleu se perdrait parmi les rivières
+               "tileHighlight": [None, "#c0611a", None, None],
                # valeurs mesurées : dégradés d'une seule teinte, clair → foncé (brique pour la température)
                "sequential": {"default": ["#86b2d8", "#5f9bd0", "#3e83c1", "#1f5f99", "#163f66"],
                               "temp": ["#d99a6c", "#cf8148", "#c0611a", "#a6501c", "#6e3412"]}}
@@ -141,6 +143,42 @@ def findings(stations, all_ranks):
                 "from": idx[0], "to": idx[-1]}
     balance = {str(y): year_balance(y) for y in (2021, 2022, 2024, 2025)}
     return {"temp": temp, "summers": summers, "snow": snow, "balance": balance}
+
+
+def position_parts(lines, link_m=300):
+    """Situe chaque partie d'un tracé le long de la rivière (0 = source, 1 = embouchure).
+
+    Le tracé principal est l'enchaînement, depuis la source, des parties bien raccordées (début à
+    moins de link_m mètres de la fin précédente). Les autres parties (bras, dérivations, morceaux isolés)
+    prennent la position du point du tracé principal le plus proche de chacune de leurs extrémités :
+    elles ont ainsi l'épaisseur de la rivière à l'endroit où elles se trouvent."""
+    lines = [l for l in lines if len(l) >= 2]
+    if len(lines) == 1:
+        return [(lines[0], 0.0, 1.0)]
+    d = lambda a, b: math.hypot((a[0] - b[0]) * KX, (a[1] - b[1]) * KY)   # en mètres
+    rest = set(range(len(lines)))
+    first = max(rest, key=lambda i: min(d(lines[i][0], lines[j][-1]) for j in rest if j != i))
+    chain = [first]; rest.remove(first)
+    while rest:
+        nxt = min(rest, key=lambda j: d(lines[chain[-1]][-1], lines[j][0]))
+        if d(lines[chain[-1]][-1], lines[nxt][0]) > link_m:   # d est en mètres
+            break
+        chain.append(nxt); rest.remove(nxt)
+    # Distances cumulées le long du tracé principal, puis ramenées à 0-1 (une seule unité : celle de d)
+    pts, cum, spans = [], 0.0, {}
+    for i in chain:
+        l = lines[i]; a = cum
+        pts.append((l[0], cum))
+        for p, q in zip(l, l[1:]):
+            cum += d(p, q); pts.append((q, cum))
+        spans[i] = (a, cum)
+    total = cum or 1
+    out = {i: (a / total, b / total) for i, (a, b) in spans.items()}
+    pos = lambda p: min(pts, key=lambda t: d(t[0], p))[1] / total
+    for i in rest:
+        out[i] = (pos(lines[i][0]), pos(lines[i][-1]))
+    order = chain + sorted(rest, key=lambda i: out[i][0])
+    return [(lines[i], *out[i]) for i in order]
 
 
 def corr(x, y, lag=0):
@@ -388,7 +426,7 @@ def main():
         lines = [l for l in (g["coordinates"] if g["type"] == "MultiLineString" else [g["coordinates"]]) if len(l) >= 2]
         km = km_by_c[c] = length_km(lines)
         if km >= 30:
-            ordered = order_parts(lines)
+            ordered = position_parts(lines)
             r = {"k": round(km), "at": network.get(c, 0), "g": [encode(simplify(l, 60)) for l, _, _ in ordered],
                  "rp": [[round(a, 4), round(b, 4)] for _, a, b in ordered]}
         else:
