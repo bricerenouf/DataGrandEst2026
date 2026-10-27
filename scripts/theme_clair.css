@@ -1,0 +1,27 @@
+/* Thème clair « papier » (index.html) : surcharge les variables de :root du gabarit. */
+:root {
+  color-scheme: light;
+  --bg: #f6f4ef;
+  --land: #ece8df;
+  --panel: rgba(246, 244, 239, .86);
+  --panel-solid: #ece8df;
+  --ink: #1e2430;
+  --ink-2: #5b6472;
+  --ink-soft: #2e3542;
+  --rule: rgba(30, 36, 48, .14);
+  --missing: #f6f4ef;                       /* une semaine sans mesure : un vide, distinct du gris « habituel » */
+  --accent: #c0611a;
+  /* Sur fond clair, les grandes rivières sont les plus foncées */
+  --river-1: #9cc3e4; --river-2: #3e83c1; --river-3: #1f4e79;
+  --flow: rgba(16, 52, 96, .9);
+  --strong: #1e2430;
+  --dept-line: #cfc8ba; --dim: rgba(246, 244, 239, .62); --case-dim: rgba(246, 244, 239, .5);
+  --river-hover: #0e3a66; --city-dot: #5b6472; --city: #2e3542; --st-dot: #7f8794;
+  --tip-bg: #1e2430; --tip-ink: #f6f4ef;
+  --veil: rgba(246, 244, 239, .62);
+  --shadow: rgba(246, 244, 239, .9);
+  --chip: #1f5f99; --chip-ink: #fff;
+  --glow: rgba(192, 97, 26, .35); --ev: rgba(192, 97, 26, .7);
+  --btn-bg: rgba(246, 244, 239, .85); --tile: rgba(30, 36, 48, .05); --chart-other: #5b6472;
+  --halo: #8a8f99; --hl-all: brightness(.55) saturate(1.5);
+}

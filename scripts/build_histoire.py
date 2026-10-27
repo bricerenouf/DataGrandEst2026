@@ -1,4 +1,4 @@
-"""Génère index.html (la page « histoire des rivières »), en trois pages :
+"""Génère index.html (thème clair) et index-dark.html (thème sombre), la page « histoire des rivières », en trois pages :
   1. la carte de la région, avec l'eau qui s'écoule dans les rivières ;
   2. l'exploration : la même carte, cliquable (région, département, cours d'eau), et le
      grand tableau semaine par semaine qui s'adapte à la sélection ;
@@ -24,7 +24,17 @@ from build_parcours import Areas  # noqa: E402
 from build_tableau import EVENTS, MISSING, VARS, mean_rows, pack, ranks  # noqa: E402
 
 TEMPLATE = ROOT / "scripts" / "histoire_template.html"
-OUT = ROOT / "index.html"
+OUT = ROOT / "index.html"              # thème clair « papier » : la page principale
+OUT_DARK = ROOT / "index-dark.html"    # thème sombre d'origine
+THEME_CLAIR_CSS = ROOT / "scripts" / "theme_clair.css"
+# Page claire : écart à la normale en échelle divergente (brique = plus bas, gris = habituel, bleu = plus haut),
+# et couleurs des quatre chiffres de la page 2 (foncées, lisibles sur fond clair)
+# (couleurs vérifiées : contraste sur le fond papier et lisibilité pour les daltoniens)
+THEME_CLAIR = {"diverging": ["#a6501c", "#d9925a", "#d8d4cb", "#6fa8d8", "#1f5f99"],
+               "tiles": ["#c4621c", "#256abf", "#199e70", "#b04a8c"],
+               # valeurs mesurées : dégradés d'une seule teinte, clair → foncé (brique pour la température)
+               "sequential": {"default": ["#86b2d8", "#5f9bd0", "#3e83c1", "#1f5f99", "#163f66"],
+                              "temp": ["#d99a6c", "#cf8148", "#c0611a", "#a6501c", "#6e3412"]}}
 AFFLUENTS = ROOT / "output" / "affluents_cours_eau.csv"
 COMMUNES = ROOT / "data" / "communes-grand-est.geojson"
 # Quelques villes pour se repérer : les grandes villes et les préfectures (désignées par leur
@@ -434,9 +444,15 @@ def main():
                   for i, f in enumerate(dept_feats)],
     }
     print("5 plus grands cours d'eau :", [feats[c]["properties"]["TopoOH"] for c in main5])
-    OUT.write_text(TEMPLATE.read_text().replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
+    html = TEMPLATE.read_text().replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    # Page principale : palette « papier » et échelle divergente pour le tableau
+    OUT.write_text(html.replace("/*__THEME_CSS__*/", THEME_CLAIR_CSS.read_text())
+                   .replace("/*__THEME__*/{}", json.dumps(THEME_CLAIR, ensure_ascii=False)))
+    # Variante sombre : les couleurs d'origine (échelle plasma)
+    OUT_DARK.write_text(html.replace("/*__THEME_CSS__*/", "").replace("/*__THEME__*/{}", "{}"))
+    print(f"-> {OUT_DARK} (thème sombre)")
     print("médianes de comparaison :", data["median"])
-    print(f"-> {OUT} ({OUT.stat().st_size / 1e6:.1f} Mo)")
+    print(f"-> {OUT} (thème clair, {OUT.stat().st_size / 1e6:.1f} Mo)")
 
 
 if __name__ == "__main__":
