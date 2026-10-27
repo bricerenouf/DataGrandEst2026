@@ -280,6 +280,12 @@ h1 { margin: 0 0 14px; font-size: clamp(34px, 4.6vw, 64px); font-weight: 600; li
 /* Tableau figé : encadré sur une période, son nom dessous */
 .tbl .mark { position: absolute; left: calc(var(--lbl) + (100% - var(--lbl)) * var(--a)); width: calc((100% - var(--lbl)) * var(--w));
   min-width: 3px; bottom: calc(var(--pb, 0px) - 3px); border: 1.5px solid var(--strong); border-radius: 2px; pointer-events: none; }
+/* Zoom au survol : la période entourée sur le tableau, et l'encadré dessous (hauteur fixe : rien ne saute) */
+.tbl .zoom-win { position: absolute; left: calc(var(--lbl) + (100% - var(--lbl)) * var(--a)); width: calc((100% - var(--lbl)) * var(--w)); bottom: -3px;
+  min-width: 3px; border: 1.5px solid var(--accent); border-radius: 2px; pointer-events: none; }
+.tbl-zoom { min-height: 98px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.tbl-zoom .zoom-hint, .tbl-zoom .zoom-cap { margin: 0 0 6px; font-size: 11.5px; color: var(--ink-2); }
+.tbl-zoom .zoom-cap { color: var(--ink); font-weight: 500; }
 .tbl .mark span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 5px; font-size: 11px; font-weight: 600; color: var(--strong); white-space: nowrap; }
 .tbl .row, .tbl .axis, .tbl .events { display: grid; grid-template-columns: 120px 1fr; gap: 0 10px; align-items: center; }
 .card .tbl .row, .card .tbl .axis { grid-template-columns: 92px 1fr; }
@@ -818,14 +824,14 @@ const colorFor = (g, c) => {
 // Valeurs mesurées sur la page claire : dégradés d'une seule teinte, clair → foncé
 const measuredRamp = c => THEME.sequential ? d3.piecewise(d3.interpolateLab, THEME.sequential[c] || THEME.sequential.default) : null;
 // Légende « plus bas / plus haut » : l'écart à la normale, ou le dégradé des valeurs mesurées.
-// Page claire : la température a ses propres couleurs (brique), d'où une seconde légende à côté.
+// Page claire, valeurs mesurées : la température a son propre dégradé (brique), d'où une seconde légende à côté.
 const gradient = f => `linear-gradient(90deg, ${d3.range(0, 101, 10).map(f).join(",")})`;
 function paintScale(raw = false) {
   const ramp = raw && measuredRamp("debit");
   document.querySelectorAll(".scale").forEach(i => (i.style.background = gradient(ramp ? (v => ramp(v / 100)) : colorFor("week"))));
-  const own = THEME.sequential || THEME.diverging;   // la température a-t-elle des couleurs à part ?
+  const own = raw && THEME.sequential;   // valeurs mesurées : la température a son propre dégradé
   $("scale-temp").hidden = !own;
-  if (own) $("scale-temp").querySelector("i").style.background = gradient(raw ? (v => measuredRamp("temp")(v / 100)) : colorFor("week", "temp"));
+  if (own) $("scale-temp").querySelector("i").style.background = gradient(v => measuredRamp("temp")(v / 100));
 }
 paintScale();
 let gran = "week";
@@ -863,6 +869,15 @@ function axis(canvas, from = 0, to = N) {
   canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
   const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr);
   ctx.fillStyle = tok("ink-2"); ctx.font = "10.5px " + getComputedStyle(document.body).fontFamily; ctx.textBaseline = "top";
+  // Courte période (deux ans au plus) : l'initiale de chaque mois
+  if (to - from <= 110) {
+    let lastM = null;
+    for (let i = from; i < to; i++) {
+      const m = monthOf(i); if (m === lastM) continue; lastM = m;
+      const x = (i - from) / (to - from) * w; ctx.fillRect(x, 11, 1, 5); ctx.fillText("JFMAMJJASOND"[m % 12], x + 3, 0);
+    }
+    return;
+  }
   // Une année sur 1, 2, 5 ou 10 selon la place disponible par année
   const perYear = w / ((to - from) / 52), every = perYear >= 34 ? 1 : perYear >= 17 ? 2 : perYear >= 7 ? 5 : 10; let last = null;
   for (let i = from; i < to; i++) {
@@ -950,10 +965,30 @@ function table(el, rows, opts = {}) {
     mk.innerHTML = `<span>${esc(m.label)}</span>`; el.appendChild(mk);
   });
   const visible = d => d.canvas.getClientRects().length > 0;
+  // Zoom (opts.zoom) : au survol, les semaines autour du point survolé, dans un encadré sous le tableau ;
+  // la période zoomée est entourée sur le tableau. Hors survol, l'encadré invite à survoler.
+  let win = null, zoomFrom = null;
+  function zoomIdle() {
+    opts.zoom.el.innerHTML = `<p class="zoom-hint">Survolez le tableau : zoom sur les 3 mois avant et après, semaine par semaine.</p>`;
+    zoomFrom = null; win.hidden = true;
+  }
+  function zoomAt(jx) {
+    const bk = buckets(g)[jx + j0], mid = Math.round((bk.first + bk.weeks.at(-1)) / 2), k = opts.zoom.weeks;
+    const zf = Math.max(w0, mid - k), zt = Math.min(w1 - 1, mid + k);
+    win.hidden = false; win.style.top = (ax.offsetHeight + 1) + "px";
+    win.style.setProperty("--a", (zf - w0) / (w1 - w0)); win.style.setProperty("--w", (zt + 1 - zf) / (w1 - w0));
+    if (zf === zoomFrom) return;
+    zoomFrom = zf;
+    const month = i => weekDate(i).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    opts.zoom.el.innerHTML = `<p class="zoom-cap">Zoom : de ${month(zf)} à ${month(zt)}, semaine par semaine</p><div class="tbl zoom-tbl"></div>`;
+    table(opts.zoom.el.querySelector(".zoom-tbl"), rows.map(r => ({ ...r, expand: null })), { gran: "week", from: zf, to: zt });
+  }
+  if (opts.zoom) { win = document.createElement("div"); win.className = "zoom-win"; el.appendChild(win); zoomIdle(); }
   el.onmousemove = e => {
     const tip = $("tip"), any = drawn.find(d => { if (!visible(d)) return false; const b = d.canvas.getBoundingClientRect(); return e.clientX >= b.left && e.clientX <= b.right; });
     if (!any) { tip.hidden = true; cursor.hidden = true; return; }
     const tb = el.getBoundingClientRect(); cursor.hidden = false; cursor.style.left = (e.clientX - tb.left) + "px";
+    if (opts.zoom) { const ab = any.canvas.getBoundingClientRect(), n0 = any.values.length; zoomAt(Math.min(n0 - 1, Math.max(0, Math.floor((e.clientX - ab.left) / ab.width * n0)))); }
     const d = drawn.find(d => { if (!visible(d)) return false; const b = d.canvas.getBoundingClientRect(); return e.clientY >= b.top - 2 && e.clientY <= b.bottom + 2 && e.clientX >= b.left && e.clientX <= b.right; });
     if (!d) { tip.hidden = true; return; }
     const b = d.canvas.getBoundingClientRect(), n = d.values.length, j = Math.min(n - 1, Math.max(0, Math.floor((e.clientX - b.left) / b.width * n))), v = d.values[j];
@@ -965,7 +1000,7 @@ function table(el, rows, opts = {}) {
     tip.innerHTML = `<b>${esc(d.label)}</b><br>${bucketLabel(d.g, j + j0)}<br>${what}`;
     tip.hidden = false; tip.style.left = Math.min(innerWidth - 310, e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px";
   };
-  el.onmouseleave = () => { $("tip").hidden = true; cursor.hidden = true; };
+  el.onmouseleave = () => { $("tip").hidden = true; cursor.hidden = true; if (opts.zoom) zoomIdle(); };
 }
 
 // ================= Pages 1 et 2 : la région, l'exploration =================
@@ -1139,6 +1174,8 @@ const FIGS = {
 };
 const POS = ["lt", "rb", "lb", "rt", "lc"];
 const CASE_ROWS = { nerveux: ["pluie", "debit"] };
+// Le nerveux : au survol de son tableau, un zoom semaine par semaine (13 semaines avant et après) montre la pluie et le débit monter ensemble
+const CASE_ZOOM = { nerveux: 13 };
 $("steps").innerHTML = cases.map((c, i) => `
   <section class="step pos-${POS[i % POS.length]}" id="c${i}" data-case="${i}">
     <div class="card layer">
@@ -1147,7 +1184,7 @@ $("steps").innerHTML = cases.map((c, i) => `
       <h3>${esc(c.name)}</h3>
       ${TEXT[c.key](c.facts)}
       <div class="figs">${FIGS[c.key](c.facts).map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join("")}</div>
-      ${c.chart ? `<div class="chart" id="ch-case${i}"></div>` : `<div class="tbl" id="t-case${i}"></div>`}
+      ${c.chart ? `<div class="chart" id="ch-case${i}"></div>` : `<div class="tbl" id="t-case${i}"></div>${CASE_ZOOM[c.key] ? `<div class="tbl-zoom" id="z-case${i}"></div>` : ""}`}
     </div>
   </section>`).join("");
 // ---- Graphiques des cas : à la place du tableau quand il ne montre pas l'essentiel ----
@@ -1232,7 +1269,8 @@ function drawCaseTables() {
   cases.filter(c => c.chart).forEach(c => CHARTS[c.chart.type]($("ch-case" + c.idx), c));
   cases.filter(c => !c.chart).forEach(c => table($("t-case" + c.idx), (CASE_ROWS[c.key] || ["pluie", "humidite", "debit"]).map(v => ({
     label: `${VARLBL[v]} · ${c.name.split(" à ")[0]}`, html: VARLBL[v], values: c.rowsU[v], cls: v === "debit" ? "big" : "mid" })),
-    { gran: "month", from: Math.max(0, c.rowsU.debit.findIndex(x => x !== MISSING)) }));   // à partir de la première mesure de débit
+    { gran: "month", from: Math.max(0, c.rowsU.debit.findIndex(x => x !== MISSING)),   // à partir de la première mesure de débit
+      zoom: CASE_ZOOM[c.key] ? { el: $("z-case" + c.idx), weeks: CASE_ZOOM[c.key] } : null }));
 }
 // Vue d'ensemble : une ligne par chiffre, tous calculés à partir des données
 {
@@ -1290,7 +1328,8 @@ function drawCaseTables() {
   };
 
   $("stats").querySelectorAll("li").forEach((li, i) => {
-    const on = () => vueHighlight(tiles[i], colors[i]), off = () => vueHighlight(null);
+    // Surbrillance : la couleur du chiffre, sauf si le thème en impose une autre (une rivière bleue sur des rivières bleues ne se verrait pas)
+    const on = () => vueHighlight(tiles[i], (THEME.tileHighlight && THEME.tileHighlight[i]) || colors[i]), off = () => vueHighlight(null);
     li.addEventListener("mouseenter", on); li.addEventListener("mouseleave", off);
     li.addEventListener("focus", on); li.addEventListener("blur", off);
   });
@@ -1315,10 +1354,12 @@ const OBS = (() => {
       opts: { gran: "year" } },
     { tab: "L'été 2022, pire que 2003", big: `${s22.low} %`,
       text: `<p>L'été 2003 reste le plus chaud (${dg(s03.temp)} en moyenne en juillet-août). L'été 2022 l'est presque autant (${dg(s22.temp)}), mais ses sols sont bien plus secs : indice d'humidité ${f2(s22.soil)}, contre ${f2(s03.soil)}.</p>
-        <p>Résultat : <b>${s22.low} % des stations</b> ont eu un débit d'été parmi les 20 % les plus bas de leur histoire, contre ${s03.low} % en 2003.</p>`,
-      cap: "Grand Est, écart à la normale, mois par mois",
+        <p>Résultat : en 2022, <b>${s22.low} % des stations</b> ont connu l'un de leurs étés les plus bas depuis 2000, avec un débit plus faible que lors de 4 étés sur 5. En 2003, c'était ${s03.low} %.</p>`,
       table: () => [rankRow("Température", regionRows.temp, "temp"), rankRow("Humidité du sol", regionRows.humidite, "humidite"), { label: "Débit", values: regionRows.debit, c: "debit", cls: "big" }],
-      opts: { gran: "month", marks: [{ from: s03.from, to: s03.to, label: "été 2003" }, { from: s22.from, to: s22.to, label: "été 2022" }] } },
+      // Deux tableaux : chaque année, semaine par semaine, l'été encadré
+      tables: [[2003, s03], [2022, s22]].map(([y, sm]) => ({
+        cap: `Grand Est en ${y}, écart à la normale, semaine par semaine`,
+        opts: { gran: "week", from: DATA.years.indexOf(y), to: DATA.years.lastIndexOf(y), marks: [{ from: sm.from, to: sm.to, label: `été ${y}` }] } })) },
     { tab: "La neige se fait rare", big: `${nf0.format(sn.pct).replace("-", "−")} %`,
       text: `<p>De décembre à mars, il tombait en moyenne <b>${sn.early} mm</b> de neige par station au début des années 2000 (hivers 2001 à 2009). Sur les hivers 2018 à 2026, plus que <b>${sn.late} mm</b>.</p>
         <p>${since === 5 ? "Les cinq" : since === 4 ? "Quatre des cinq" : since === 3 ? "Trois des cinq" : `${since} des cinq`} hivers les moins enneigés sont récents : ${list(sn.low5.filter(y => y >= 2020).sort().map(winterName))}.</p>`,
@@ -1326,11 +1367,15 @@ const OBS = (() => {
       table: () => [{ label: "Grand Est", values: measured(DATA.regionRaw, "region", "neige"), c: "neige", cls: "mid" },
         ...["88", "68", "67"].map(code => deptByCode[code]).filter(Boolean).map(d => ({ label: d.nom, values: measured(d, "d" + d.code, "neige"), c: "neige", cls: "mid" }))],
       opts: { gran: "year" } },
-    { tab: "Du très sec au très humide", big: `+${nf0.format(Math.round(100 * (b["2024"].rain / b["2022"].rain - 1)))} % de pluie`,
+    { tab: "Du très sec au très humide", big: `+${nf0.format(Math.round(100 * (b["2024"].rain / b["2022"].rain - 1)))} %`,
       text: `<p>En 2022, il tombe ${nf0.format(b["2022"].rain)} mm de pluie : <b>${b["2022"].below} stations sur ${b["2022"].n}</b> coulent sous leur normale sur l'année.</p>
         <p>Deux ans plus tard, en 2024, ${nf0.format(b["2024"].rain)} mm : <b>${b["2024"].above === b["2024"].n ? "toutes" : b["2024"].above} les ${b["2024"].n} stations</b> coulent au-dessus.</p>`,
-      cap: "Grand Est, écart à la normale, mois par mois, de 2021 à 2025",
-      table: () => [rankRow("Pluie", regionRows.pluie, "pluie"), rankRow("Humidité du sol", regionRows.humidite, "humidite"), { label: "Débit", values: regionRows.debit, c: "debit", cls: "big" }],
+      cap: "Grand Est, mois par mois, de 2021 à 2025 · pluie et humidité du sol : valeurs mesurées (couleur propre à chaque ligne) · débit : écart à la normale",
+      // Pluie et humidité : valeurs mesurées (moyenne des stations) ; débit : écart à la normale
+      // (une moyenne de débits de rivières de tailles différentes n'aurait pas de sens)
+      table: () => [{ label: "Pluie", values: measured(DATA.regionRaw, "region", "pluie"), c: "pluie", cls: "mid" },
+        { label: "Humidité du sol", values: measured(DATA.regionRaw, "region", "humidite"), c: "humidite", cls: "mid" },
+        { label: "Débit", values: regionRows.debit, c: "debit", cls: "big" }],
       opts: { gran: "month", from: b["2021"].from, to: b["2025"].to, marks: [{ from: b["2022"].from, to: b["2022"].to, label: "2022" }, { from: b["2024"].from, to: b["2024"].to, label: "2024" }] } },
   ];
 })();
@@ -1340,10 +1385,11 @@ $("obs-items").innerHTML = OBS.map((x, i) => `
     <p class="big">${x.big}</p>
     <h3>${esc(x.tab)}</h3>
     ${x.text}
-    <p class="obs-cap">${esc(x.cap)}</p>
-    <div class="tbl obs-tbl" id="obs-tbl-${i}"></div>
+    ${obsTables(x).map((z, k) => `<p class="obs-cap">${esc(z.cap)}</p><div class="tbl obs-tbl" id="obs-tbl-${i}-${k}"></div>`).join("")}
   </article>`).join("");
-function drawObsTables() { OBS.forEach((x, i) => table($("obs-tbl-" + i), x.table(), x.opts)); }
+// Un tableau par tendance, ou plusieurs (mêmes lignes, périodes différentes)
+function obsTables(x) { return x.tables || [{ cap: x.cap, opts: x.opts }]; }
+function drawObsTables() { OBS.forEach((x, i) => obsTables(x).forEach((z, k) => table($(`obs-tbl-${i}-${k}`), x.table(), z.opts))); }
 $("obs-dots").innerHTML = OBS.map(x => `<button type="button" aria-label="${esc(x.tab)}"></button>`).join("");
 $("obs-dots").querySelectorAll("button").forEach((d, i) => d.addEventListener("click", () => $("obs-" + i).scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" })));
 function obsFromScroll() {
