@@ -1032,7 +1032,7 @@ function table(el, rows, opts = {}) {
 
 // ================= Pages 1 et 2 : la région, l'exploration =================
 let sel = { dept: null, river: null }, hovered = null;
-const clicksOff = () => bg.page === "p1" || bg.page === "obs";   // page 1 : la carte se survole, ne se clique pas
+const clicksOff = () => bg.page === "p1" || bg.page === "obs" || bg.page === "outro";   // pages 1, 4 et conclusion : la carte se survole, ne se clique pas
 const onLanding = () => bg.page === "p1" || bg.page === "vue" || bg.page === "obs" || bg.page === "outro";
 function onDeptHover(d) {
   if (bg.mode !== "region" || onLanding()) return;   // page 1 : pas de surbrillance des départements
